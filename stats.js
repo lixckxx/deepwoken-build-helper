@@ -216,12 +216,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const allCombinations = generateCombinations(statRequirements);
-        console.log(`Testing ${allCombinations.length} combinations...`);
+        
+        // Generate shrine inclusion variants for post-only stats
+        const allCombinationsWithShrineOptions = [];
+        for (const config of allCombinations) {
+            const postOnlyStats = [];
+            for (const [statName, data] of Object.entries(config)) {
+                if (data.minPost > 0 && data.minPre === 0) {
+                    postOnlyStats.push(statName);
+                }
+            }
+
+            // Generate all combinations of including/excluding post-only stats from shrine
+            const shrineOptionCount = Math.pow(2, postOnlyStats.length);
+            for (let i = 0; i < shrineOptionCount; i++) {
+                const variant = {
+                    config: config,
+                    shrineInclusions: {}
+                };
+                
+                for (let j = 0; j < postOnlyStats.length; j++) {
+                    const includeInShrine = (i >> j) & 1;
+                    variant.shrineInclusions[postOnlyStats[j]] = includeInShrine === 1;
+                }
+                
+                allCombinationsWithShrineOptions.push(variant);
+            }
+            
+            // If no post-only stats, just add the config as-is
+            if (postOnlyStats.length === 0) {
+                allCombinationsWithShrineOptions.push({
+                    config: config,
+                    shrineInclusions: {}
+                });
+            }
+        }
+        
+        console.log(`Testing ${allCombinationsWithShrineOptions.length} combinations (including shrine inclusion variants)...`);
 
         let bestSolution = null;
         let bestScore = -Infinity;
 
-        for (const config of allCombinations) {
+        for (const variant of allCombinationsWithShrineOptions) {
+            const config = variant.config;
+            
             // Build pre-shrine allocation
             const preShrine = {};
             const statsToInclude = new Set();
@@ -235,13 +273,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     statsToInclude.add(statName);
                 }
 
-                // If we need post-shrine points but no pre-shrine, invest 1 point to include it
+                // Check if this post-only stat should be included in shrine
                 if (data.minPost > 0 && data.minPre === 0) {
-                    preShrine[statName] = {
-                        currentPre: 1,
-                        isAttunement: data.isAttunement
-                    };
-                    statsToInclude.add(statName);
+                    if (variant.shrineInclusions[statName]) {
+                        // Include in shrine with 1 point investment
+                        preShrine[statName] = {
+                            currentPre: 1,
+                            isAttunement: data.isAttunement
+                        };
+                        statsToInclude.add(statName);
+                    }
+                    // Otherwise, exclude from shrine (will invest fully post-shrine)
                 }
             }
 
@@ -263,10 +305,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const [statName, data] of Object.entries(config)) {
                 const postShrineValue = shrineResult.postShrine[statName] || 0;
-                const neededPost = Math.max(0, data.minPost - postShrineValue);
-
-                finalStats[statName] = postShrineValue + neededPost;
-                totalPostInvestment += neededPost;
+                
+                // For stats excluded from shrine, invest all points post-shrine
+                if (data.minPost > 0 && data.minPre === 0 && !variant.shrineInclusions[statName]) {
+                    finalStats[statName] = data.minPost;
+                    totalPostInvestment += data.minPost;
+                } else {
+                    // For stats in shrine or with pre-shrine requirements
+                    const neededPost = Math.max(0, data.minPost - postShrineValue);
+                    finalStats[statName] = postShrineValue + neededPost;
+                    totalPostInvestment += neededPost;
+                }
 
                 // Check validity
                 if (finalStats[statName] > MAX_STAT_VALUE) {
@@ -372,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check for bottlenecking in non-attunement stats only
             for (const statName of affectedStats) {
                 const isAttunement = attunements.includes(statName.toLowerCase());
-                console.log(isAttunement, statName.toLowerCase())
+                //console.log(isAttunement, statName.toLowerCase())
 
                 if (!isAttunement && !bottlenecked.includes(statName)) {
                     const prevStat = previousStats[statName];
@@ -484,30 +533,41 @@ document.addEventListener('DOMContentLoaded', () => {
             preShrineBuild.appendChild(statItem);
         }
 
-        // Populate post-shrine values
-        const postShrineValues = document.getElementById('postShrineValues');
-        postShrineValues.innerHTML = '';
-        for (const [stat, value] of Object.entries(solution.postShrine)) {
-            const statItem = document.createElement('div');
-            statItem.className = 'stat-item';
-            statItem.innerHTML = `
-                <span class="stat-name">${stat}</span>
-                <span class="stat-value">${value}</span>
-            `;
-            postShrineValues.appendChild(statItem);
-        }
+        const combinedStats = document.getElementById('combinedStats');
+        combinedStats.innerHTML = '';
 
-        // Populate final stats
-        const finalStats = document.getElementById('finalStats');
-        finalStats.innerHTML = '';
-        for (const [stat, value] of Object.entries(solution.finalStats)) {
+        // Show all final stats
+        for (const [stat, finalValue] of Object.entries(solution.finalStats)) {
+            if (finalValue === 0) continue; // Skip stats with 0 final value
+            
             const statItem = document.createElement('div');
             statItem.className = 'stat-item';
-            statItem.innerHTML = `
-                <span class="stat-name">${stat}</span>
-                <span class="stat-value">${value}</span>
-            `;
-            finalStats.appendChild(statItem);
+
+            // Check if this stat went through shrine averaging
+            if (solution.postShrine[stat] !== undefined) {
+                const postValue = solution.postShrine[stat];
+                const additionalInvestment = finalValue - postValue;
+
+                if (additionalInvestment > 0) {
+                    statItem.innerHTML = `
+                        <span class="stat-name">${stat}</span>
+                        <span class="stat-value">${postValue} → ${finalValue} <span style="font-size: 0.85em; color: var(--card-text-secondary);">(+${additionalInvestment})</span></span>
+                    `;
+                } else {
+                    statItem.innerHTML = `
+                        <span class="stat-name">${stat}</span>
+                        <span class="stat-value">${finalValue}</span>
+                    `;
+                }
+            } else {
+                // Stat was excluded from shrine (invested fully post-shrine)
+                statItem.innerHTML = `
+                    <span class="stat-name">${stat}</span>
+                    <span class="stat-value">0 → ${finalValue} <span style="font-size: 0.85em; color: var(--card-text-secondary);">(+${finalValue})</span></span>
+                `;
+            }
+
+            combinedStats.appendChild(statItem);
         }
 
         // Show modal
