@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stats UI</title>
+    <link rel="stylesheet" href="stats.css">
+</head>
+
+<body>
+
+    <!-- Results Modal -->
+    <div id="resultsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Optimal Build Solution</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="results-section">
+                    <h3>Summary</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Points Used:</span>
+                            <span class="summary-value" id="totalPointsUsed">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Leftover Points:</span>
+                            <span class="summary-value" id="leftoverPoints">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Pre-Shrine Investment:</span>
+                            <span class="summary-value" id="preInvestment">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Post-Shrine Investment:</span>
+                            <span class="summary-value" id="postInvestment">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="results-section">
+                    <h3>Pre-Shrine Build</h3>
+                    <div id="preShrineBuild" class="stats-display"></div>
+                </div>
+
+                <div class="results-section">
+                    <h3>Final Stats (Post-Shrine)</h3>
+                    <div id="combinedStats" class="stats-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stats-card power-card">
+            <div class="power-info">
+                <p>Build Optimizer</p>
+                <p>By: Lix</p>
+            </div>
+        </div>
+
+        <div class="stats-card weapons-card">
+            <div class="stat-row header-row">
+                <label class="col-label"></label>
+                <label class="col-label"></label>
+            </div>
+            <div class="stat-inputs-container">
+                <div class="stat-row" data-stat="Heavy Wep.">
+                    <label>Heavy Wep.</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Medium Wep.">
+                    <label>Medium Wep.</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Light Wep.">
+                    <label>Light Wep.</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-card attributes-card">
+            <div class="stat-inputs-container">
+                <div class="stat-row" data-stat="Strength">
+                    <label>Strength</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Fortitude">
+                    <label>Fortitude</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Agility">
+                    <label>Agility</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Intelligence">
+                    <label>Intelligence</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Willpower">
+                    <label>Willpower</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Charisma">
+                    <label>Charisma</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-card attunements-card">
+            <div class="stat-inputs-container">
+                <div class="stat-row" data-stat="Flamecharm">
+                    <label>Flamecharm</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Frostdraw">
+                    <label>Frostdraw</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Thundercall">
+                    <label>Thundercall</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Galebreathe">
+                    <label>Galebreathe</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Shadowcast">
+                    <label>Shadowcast</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Ironsing">
+                    <label>Ironsing</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+                <div class="stat-row" data-stat="Bloodrend">
+                    <label>Bloodrend</label>
+                    <div class="input-group">
+                        <input type="number" value="0" data-condition="any">
+                        <select class="condition-select">
+                            <option value="any">Any</option>
+                            <option value="pre">Pre-Shrine</option>
+                            <option value="post">Post-Shrine</option>
+                        </select>
+                    </div>
+                    <button class="add-input-btn">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-card shrine-controls">
+            <button id="calculateButton">Calculate</button>
+        </div>
+    </div>
+
+    <script src="stats.js"></script>
+
+</body>
+
+</html>

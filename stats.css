@@ -1,0 +1,369 @@
+/* CSS variables */
+:root {
+    /* Main colors */
+    --card-background: rgba(216, 215, 202, 1);
+    --body-background: radial-gradient(#18221a, #04100d);
+    --text-color: #202020;
+    
+    /* Card specific text colors */
+    --card-text-primary: black;
+    --card-text-secondary: #4a4a4a;
+    
+    /* Input & Border */
+    --input-background: rgba(255, 255, 255, 0.3);
+    --border-color: #797979;
+    --splitter-color: #c5c5c5;
+
+    /* Button colors */
+    --button-background: #04100d;
+    --button-textcolor: white;
+    --button-hover: #1a2d26;
+    --button-active: #000000;
+}
+
+/* --- Global Styles --- */
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    
+    background: var(--body-background);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-color);
+    padding: 60px;
+    overflow: hidden;
+}
+
+/* Remove spin buttons from number input */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    appearance: none;
+}
+
+/* --- Grid Layout --- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    width: max-content;
+    gap: 16px;
+    max-width: 600px;
+    /* Remove: margin: auto; */
+}
+
+/* --- Card Base Style --- */
+.stats-card {
+    background-color: var(--card-background);
+    color: var(--card-text-primary);
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+}
+
+/* --- Power Card --- */
+.power-card {
+    gap: 0;
+}
+
+.power-card p {
+    margin: 0;
+    font-weight: bold;
+}
+
+.power-card p:nth-child(2) {
+    color: var(--card-text-secondary);
+    font-weight: normal;
+    font-size: 0.9em;
+}
+
+/* --- Stat Row Base Styles --- */
+.stat-row {
+    display: flex;
+    width: max-content;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.95em;
+}
+
+.stat-row label {
+    flex-grow: 1;
+    text-align: left;
+}
+
+.stat-row span {
+    width: 30px;
+    text-align: right;
+    color: var(--card-text-secondary);
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Input styling */
+.stat-row input[type="number"] {
+    width: 45px;
+    text-align: right;
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-background);
+    color: var(--card-text-primary);
+    border-radius: 0;
+}
+
+.stat-row input[type="number"]:focus {
+    outline: none;
+    border-color: var(--card-text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Select dropdown styling */
+.condition-select {
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-background);
+    color: var(--card-text-primary);
+    font-size: 0.85em;
+    cursor: pointer;
+    border-radius: 0;
+}
+
+.condition-select:focus {
+    outline: none;
+    border-color: var(--card-text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Button styling for add/remove */
+.add-input-btn,
+.remove-input-btn {
+    padding: 2px 8px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+    color: var(--card-text-primary);
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: bold;
+    transition: background-color 0.2s, border-color 0.2s;
+    border-radius: 0;
+}
+
+.add-input-btn:hover,
+.remove-input-btn:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: var(--card-text-primary);
+}
+
+.add-input-btn:active,
+.remove-input-btn:active {
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
+/* Hide the unused header row in weapons card */
+.weapons-card .header-row {
+    display: none;
+}
+
+/* --- Shrine Controls --- */
+.shrine-controls {
+    grid-column: 1 / -1; 
+    margin-top: 10px;
+    padding-bottom: 5px;
+}
+
+.splitter-line {
+    border-top: 1px solid var(--splitter-color);
+    opacity: 0.5;
+    margin: 5px 0 10px 0;
+}
+
+.shrine-controls button {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+    cursor: pointer;
+    text-transform: uppercase;
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+    transition: background-color 0.1s, transform 0.1s, box-shadow 0.1s;
+    line-height: 1.2;
+    padding: 8px;
+    width: 100%;
+}
+
+.shrine-controls button:hover {
+    background-color: var(--button-hover);
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.5);
+}
+
+.shrine-controls button:active {
+    background-color: var(--button-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transform: translateY(2px);
+}
+
+.shrine-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); 
+    gap: 8px;
+    padding: 0 5px 5px 5px;
+}
+
+.shrine-buttons button {
+    width: auto; 
+}
+
+/* --- Modal Styles --- */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    max-width: 700px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+    padding: 10px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid var(--splitter-color);
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: var(--card-text-primary);
+    font-size: 1.3em;
+}
+
+.close-btn {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+    border: 1px solid var(--border-color);
+    border-radius: 0; /* Add this */
+    cursor: pointer; /* Add this */
+    width: 32px;
+    height: 32px;
+    font-size: 1.5em;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); /* Optional but adds consistency */
+    transition: background-color 0.1s, transform 0.1s, box-shadow 0.1s;
+}
+
+.close-btn:hover {
+    background-color: var(--button-hover);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5); /* Optional */
+}
+
+.close-btn:active {
+    background-color: var(--button-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); /* Optional */
+    transform: translateY(1px); /* Optional */
+}
+
+.modal-body {
+    padding: 10px;
+}
+
+.results-section {
+    margin-bottom: 16px;
+}
+
+.results-section:last-child {
+    margin-bottom: 0;
+}
+
+.results-section h3 {
+    margin: 0 0 12px 0;
+    color: var(--card-text-primary);
+    font-size: 1.1em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--splitter-color);
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.summary-label {
+    color: var(--card-text-primary);
+    font-weight: 500;
+}
+
+.summary-value {
+    color: var(--card-text-primary);
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.stats-display {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.stat-name {
+    color: var(--card-text-primary);
+    font-size: 0.95em;
+}
+
+.stat-value {
+    color: var(--card-text-primary);
+    font-weight: bold;
+}
