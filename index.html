@@ -191,7 +191,7 @@
                         </div>
                     </div>
 
-                    
+
 
                 </div>
             </div>
@@ -482,6 +482,32 @@
                     <div class="search-bar">
                         <input type="text" id="searchAvailable" placeholder="Search talents..." />
                     </div>
+
+                    <!-- Rarity Toggles -->
+                    <div class="rarity-toggles">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="toggleOrigin" checked>
+                            <span>Show Origin Talents</span>
+                        </label>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="toggleQuest" checked>
+                            <span>Show Quest Talents</span>
+                        </label>
+                    </div>
+
+                    <!-- Sort Controls -->
+                    <div class="sort-controls">
+                        <label>Sort by:</label>
+                        <select id="sortBy">
+                            <option value="name">Name</option>
+                            <option value="points">Points</option>
+                        </select>
+                        <select id="sortOrder">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+
                     <div class="filter-buttons" id="availableFilters">
                         <button class="filter-btn availability-btn" data-filter="available">Available</button>
                         <button class="filter-btn availability-btn" data-filter="unavailable">Unavailable</button>
@@ -503,6 +529,9 @@
                         <button class="filter-btn" data-filter="Bloodrend">BLD</button>
                         <button class="filter-btn clear-filters">Clear</button>
                     </div>
+
+
+
                 </div>
                 <div class="talents-list" id="availableTalents">
                     <p class="loading-message">Loading talents...</p>
@@ -516,6 +545,20 @@
                     <div class="search-bar">
                         <input type="text" id="searchSelected" placeholder="Search selected..." />
                     </div>
+
+                    <!-- Sort Controls for Selected -->
+                    <div class="sort-controls">
+                        <label>Sort by:</label>
+                        <select id="sortBySelected">
+                            <option value="name">Name</option>
+                            <option value="points">Points</option>
+                        </select>
+                        <select id="sortOrderSelected">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+
                     <div class="filter-buttons" id="selectedFilters">
                         <button class="filter-btn" data-filter="Strength">STR</button>
                         <button class="filter-btn" data-filter="Fortitude">FOR</button>
@@ -536,6 +579,9 @@
                         <button class="filter-btn clear-filters">Clear</button>
                     </div>
                 </div>
+
+
+
                 <div class="talents-list" id="selectedTalents">
                     <p class="empty-message">No talents selected</p>
                 </div>
@@ -548,6 +594,28 @@
         <div class="recommendations-container">
             <h2>Recommendations</h2>
             <p>Recommendations content coming soon...</p>
+        </div>
+    </div>
+
+   <!-- Talent Confirmation Modal -->
+    <div id="talentConfirmationModal" class="talent-confirmation-modal">
+        <div class="talent-confirmation-content">
+            <div class="talent-confirmation-header">
+                <h2>Apply Optimal Build?</h2>
+                <p id="talentConfirmationMessage"></p>
+            </div>
+            <div class="talent-confirmation-body">
+                <div class="talent-list-section" id="talentListSection">
+                    <h3>Selected Talents</h3>
+                    <ul id="selectedTalentsList"></ul>
+                </div>
+                
+                <div id="buildComparisonSection"></div>
+            </div>
+            <div class="talent-confirmation-footer">
+                <button class="confirm-btn" id="confirmBuildBtn">Apply Changes</button>
+                <button class="decline-btn" id="declineBuildBtn">Cancel</button>
+            </div>
         </div>
     </div>
 

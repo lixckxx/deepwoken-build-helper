@@ -18,7 +18,7 @@
     --button-background: #04100d;
     --button-textcolor: white;
     --button-hover: #1a2d26;
-    --button-active: #000000;
+    --button-active: #0a2921;
 }
 
 /* --- Global Styles --- */
@@ -478,6 +478,81 @@ input[type="number"] {
     background-color: rgba(255, 255, 255, 0.5);
 }
 
+/* --- Rarity Toggles --- */
+.rarity-toggles {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--card-text-primary);
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.toggle-label:hover {
+    color: var(--card-text-primary);
+}
+
+.toggle-label input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--button-background);
+}
+
+/* --- Sort Controls --- */
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.sort-controls label {
+    font-weight: 600;
+    color: var(--card-text-primary);
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.sort-controls select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    background-color: rgba(255, 255, 255, 0.4);
+    color: var(--card-text-primary);
+    font-size: 0.85em;
+    cursor: pointer;
+    border-radius: 0;
+    font-weight: 500;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.sort-controls select:hover {
+    background-color: rgba(255, 255, 255, 0.6);
+    border-color: var(--card-text-primary);
+}
+
+.sort-controls select:focus {
+    outline: none;
+    border-color: var(--card-text-primary);
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
 .filter-buttons {
     display: flex;
     flex-wrap: wrap;
@@ -612,21 +687,6 @@ input[type="number"] {
 
 .talents-list::-webkit-scrollbar-thumb:hover {
     background: var(--card-text-primary);
-}
-
-.filter-btn.availability-btn {
-    background-color: var(--button-background);
-    color: var(--button-textcolor);
-    border-color: var(--button-background);
-}
-
-.filter-btn.availability-btn:hover {
-    background-color: var(--button-hover);
-}
-
-.filter-btn.availability-btn.active {
-    background-color: var(--button-active);
-    border-color: var(--button-active);
 }
 
 .talent-card.unavailable {
@@ -766,4 +826,190 @@ input[type="number"] {
     background-color: var(--button-active);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     transform: translateY(2px);
+}
+
+.talent-from {
+    color: var(--card-text-secondary);
+    font-size: 0.85em;
+    font-style: italic;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-left: 3px solid var(--border-color);
+}
+
+/* Talent Confirmation Modal */
+.talent-confirmation-modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.talent-confirmation-modal.active {
+    display: flex;
+}
+
+.talent-confirmation-content {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+    padding: 10px;
+}
+
+.talent-confirmation-header {
+    padding: 10px;
+    border-bottom: 1px solid var(--splitter-color);
+}
+
+.talent-confirmation-header h2 {
+    margin: 0 0 8px 0;
+    color: var(--card-text-primary);
+    font-size: 1.3em;
+}
+
+.talent-confirmation-header p {
+    margin: 0;
+    color: var(--card-text-secondary);
+    font-size: 0.95em;
+}
+
+.talent-confirmation-body {
+    padding: 15px 10px;
+}
+
+.talent-list-section {
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.talent-list-section h3 {
+    margin: 0 0 10px 0;
+    color: var(--card-text-primary);
+    font-size: 1.05em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--splitter-color);
+}
+
+.talent-list-section ul {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--card-text-primary);
+}
+
+.talent-list-section li {
+    margin-bottom: 4px;
+    font-size: 0.95em;
+}
+
+.build-comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.build-column {
+    padding: 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.build-column h3 {
+    margin: 0 0 12px 0;
+    color: var(--card-text-primary);
+    font-size: 1.05em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--splitter-color);
+}
+
+.build-stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.9em;
+    color: var(--card-text-primary);
+}
+
+.build-stat-item.changed {
+    font-weight: bold;
+    color: #006400;
+}
+
+.talent-confirmation-footer {
+    padding: 10px;
+    border-top: 1px solid var(--splitter-color);
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.confirm-btn,
+.decline-btn {
+    padding: 10px 20px;
+    cursor: pointer;
+    text-transform: uppercase;
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+    transition: background-color 0.1s, transform 0.1s, box-shadow 0.1s;
+    font-size: 0.95em;
+    font-weight: bold;
+    min-width: 120px;
+}
+
+.confirm-btn {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+}
+
+.confirm-btn:hover {
+    background-color: var(--button-hover);
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.5);
+}
+
+.confirm-btn:active {
+    background-color: var(--button-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transform: translateY(2px);
+}
+
+.decline-btn {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+}
+
+.decline-btn:hover {
+    background-color: var(--button-hover);
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.5);
+}
+
+.decline-btn:active {
+    background-color: var(--button-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transform: translateY(2px);
+}
+
+.no-changes-message {
+    padding: 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+    text-align: center;
+    color: var(--card-text-secondary);
+    font-style: italic;
 }

@@ -62,6 +62,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const preInput = dualGroup.querySelector('.pre-shrine');
             const postInput = dualGroup.querySelector('.post-shrine');
             syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+
+            // Re-render talents to update availability
+            renderBothPanels();
         });
 
         input.addEventListener('keydown', (e) => {
@@ -119,6 +122,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        return stats;
+    }
+
+    function getCurrentMaxBuildStats() {
+        const stats = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+
+            const preValue = parseInt(preInput.value) || 0;
+            const postValue = parseInt(postInput.value) || 0;
+
+            // Use the maximum of the two values for the talent check
+            stats[statName] = Math.max(preValue, postValue);
+        });
         return stats;
     }
 
@@ -801,7 +820,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 preInput.value = data.currentPre;
             }
         }
-
         // Apply final values as post-shrine
         for (const [statName, finalValue] of Object.entries(solution.finalStats)) {
             const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
@@ -828,7 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('resultsModal').classList.remove('active');
 
         // Show success message
-       alert('Build applied successfully!');
+        alert('Build applied successfully!');
     }
 
     // Attach event listener to Apply to Builder button
@@ -866,6 +884,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedTalents = new Set();
     let availableFilters = new Set();
     let selectedFilters = new Set();
+
+    // Rarity toggle states
+    let showOriginTalents = true;
+    let showQuestTalents = true;
+
+    // Sort settings
+    let availableSortBy = 'name';
+    let availableSortOrder = 'asc';
+    let selectedSortBy = 'name';
+    let selectedSortOrder = 'asc';
+
+
+    let pendingTalentSelection = null;
+    let pendingOptimalBuild = null;
 
     // Fetch talents data
     async function loadTalents() {
@@ -928,12 +960,80 @@ document.addEventListener('DOMContentLoaded', () => {
         return reqs;
     }
 
+    function isTalentAvailable(talent, currentStats) {
+        const requirements = getTalentRequirements(talent);
+
+        // Talent is available if it has no requirements or all requirements are met
+        if (requirements.length === 0) return true;
+
+        for (const req of requirements) {
+            // Check if the current stat value is less than the required value
+            if ((currentStats[req.stat] || 0) < req.value) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Function to sort talents
+    function sortTalents(talents, sortBy, sortOrder) {
+        return [...talents].sort((a, b) => {
+            let compareValue = 0;
+
+            if (sortBy === 'name') {
+                compareValue = a.name.localeCompare(b.name);
+            } else if (sortBy === 'points') {
+                // Get the total points required (sum of all requirements)
+                const aPoints = getTalentTotalPoints(a);
+                const bPoints = getTalentTotalPoints(b);
+                compareValue = aPoints - bPoints;
+            }
+
+            // Reverse if descending order
+            return sortOrder === 'desc' ? -compareValue : compareValue;
+        });
+    }
+
+    // Helper function to get total points for a talent
+    function getTalentTotalPoints(talent) {
+        const requirements = getTalentRequirements(talent);
+        if (requirements.length === 0) return 0;
+
+        // Sum up all requirement values
+        return requirements.reduce((sum, req) => sum + req.value, 0);
+    }
+
+    // Function to filter talents by rarity
+    function filterByRarity(talents) {
+        return talents.filter(talent => {
+            const rarity = talent.rarity;
+
+            // If Origin talent and toggle is off, filter it out
+            if (rarity === 'Origin' && !showOriginTalents) {
+                return false;
+            }
+
+            // If Quest talent and toggle is off, filter it out
+            if (rarity === 'Quest' && !showQuestTalents) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
     function createTalentCard(talent, isSelected = false) {
         const card = document.createElement('div');
         card.className = 'talent-card';
         card.dataset.talentId = talent.id;
 
         const requirements = getTalentRequirements(talent);
+
+        // Get the "from" field if it exists
+        let fromHTML = '';
+        if (talent.reqs && talent.reqs.from) {
+            fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
+        }
 
         let reqsHTML = '';
         if (requirements.length > 0) {
@@ -945,13 +1045,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         card.innerHTML = `
-            <div class="talent-header">
-                <span class="talent-name">${talent.name}</span>
-                <span class="talent-rarity">${talent.rarity || 'Common'}</span>
-            </div>
-            <div class="talent-desc">${talent.desc || 'No description available'}</div>
-            ${reqsHTML}
-        `;
+        <div class="talent-header">
+            <span class="talent-name">${talent.name}</span>
+            <span class="talent-rarity">${talent.rarity || 'Common'}</span>
+        </div>
+        <div class="talent-desc">${talent.desc || 'No description available'}</div>
+        ${fromHTML}
+        ${reqsHTML}
+    `;
 
         card.addEventListener('click', () => {
             if (isSelected) {
@@ -964,9 +1065,408 @@ document.addEventListener('DOMContentLoaded', () => {
         return card;
     }
 
-    function selectTalent(talentId) {
+
+
+
+    // Add this new function to find a talent by name
+    function findTalentByName(talentName) {
+        return allTalents.find(t => t.name.toLowerCase() === talentName.toLowerCase());
+    }
+
+    // Add this new function to get required talent names
+    function getRequiredTalentNames(talent) {
+        const requiredTalents = [];
+
+        if (talent.reqs && talent.reqs.from) {
+            // Parse the "from" field - it can contain multiple talents separated by commas
+            const fromParts = talent.reqs.from.split(',').map(part => part.trim());
+
+            fromParts.forEach(part => {
+                // Skip "Oath:" prefix and other non-talent identifiers
+                if (part.startsWith('Oath:') ||
+                    part.startsWith('Race:') ||
+                    part.startsWith('Origin:') ||
+                    part.startsWith('Murmur:') ||
+                    part.startsWith('Resonance:')) {
+                    return;
+                }
+
+                // The part should be a talent name
+                requiredTalents.push(part);
+            });
+        }
+
+        return requiredTalents;
+    }
+
+    // Add this new recursive function to select talent and its dependencies
+    function selectTalentWithDependencies(talentId, visited = new Set()) {
+        // Prevent infinite loops
+        if (visited.has(talentId)) {
+            return;
+        }
+        visited.add(talentId);
+
+        const talent = allTalents.find(t => t.id === talentId);
+        if (!talent) {
+            return;
+        }
+
+        // Get required talents
+        const requiredTalentNames = getRequiredTalentNames(talent);
+
+        // Recursively select required talents first
+        requiredTalentNames.forEach(reqName => {
+            const requiredTalent = findTalentByName(reqName);
+            if (requiredTalent && !selectedTalents.has(requiredTalent.id)) {
+                selectTalentWithDependencies(requiredTalent.id, visited);
+            }
+        });
+
+        // Finally, select this talent
         selectedTalents.add(talentId);
+    }
+
+   // Update the selectTalent function
+    function selectTalent(talentId) {
+        // Store the pending selection
+        pendingTalentSelection = {
+            talentId: talentId,
+            dependencyIds: []
+        };
+
+        // Collect all dependencies
+        const visited = new Set();
+        collectDependencies(talentId, visited);
+        pendingTalentSelection.dependencyIds = Array.from(visited);
+
+        // Get current build stats (max of pre and post)
+        const currentMaxStats = getCurrentMaxBuildStats();
+        
+        // Get requirements from new talents
+        const newTalents = pendingTalentSelection.dependencyIds.map(id => allTalents.find(t => t.id === id)).filter(t => t);
+        
+        // Check if all requirements are already met
+        let allRequirementsMet = true;
+        for (const talent of newTalents) {
+            const requirements = getTalentRequirements(talent);
+            for (const req of requirements) {
+                if ((currentMaxStats[req.stat] || 0) < req.value) {
+                    allRequirementsMet = false;
+                    break;
+                }
+            }
+            if (!allRequirementsMet) break;
+        }
+        
+        // If all requirements are met, just add the talents without showing modal
+        if (allRequirementsMet) {
+            pendingTalentSelection.dependencyIds.forEach(id => {
+                selectedTalents.add(id);
+            });
+            pendingTalentSelection = null;
+            renderBothPanels();
+            return;
+        }
+        
+        // Merge current build with new talent requirements
+        const currentBuild = collectManualBuildStats();
+        const mergedRequirements = {};
+        
+        // Add current build as requirements
+        for (const [statName, value] of Object.entries(currentBuild.pre)) {
+            if (!mergedRequirements[statName]) {
+                mergedRequirements[statName] = [];
+            }
+            mergedRequirements[statName].push({ value: value, condition: 'pre' });
+        }
+        
+        for (const [statName, value] of Object.entries(currentBuild.post)) {
+            if (!mergedRequirements[statName]) {
+                mergedRequirements[statName] = [];
+            }
+            mergedRequirements[statName].push({ value: value, condition: 'post' });
+        }
+        
+        // Add new talent requirements
+        newTalents.forEach(talent => {
+            const requirements = getTalentRequirements(talent);
+            requirements.forEach(req => {
+                if (!mergedRequirements[req.stat]) {
+                    mergedRequirements[req.stat] = [];
+                }
+                mergedRequirements[req.stat].push({ value: req.value, condition: 'any' });
+            });
+        });
+
+        const hasNewRequirements = newTalents.some(talent => getTalentRequirements(talent).length > 0);
+
+        // Only calculate if there are actual requirements
+        if (Object.keys(mergedRequirements).length > 0) {
+            const optimalBuild = calculateOptimalOrder(mergedRequirements);
+
+            if (optimalBuild) {
+                pendingOptimalBuild = optimalBuild;
+                showTalentConfirmationModal(pendingTalentSelection.dependencyIds, optimalBuild, hasNewRequirements);
+            } else {
+                alert('Warning: No optimal build found within constraints. Talents will be added anyway.');
+                confirmTalentSelection();
+            }
+        } else if (!hasNewRequirements) {
+            // No requirements at all - just add the talents
+            confirmTalentSelection();
+        } else {
+            alert('Warning: No optimal build found within constraints. Talents will be added anyway.');
+            confirmTalentSelection();
+        }
+    }
+
+    // Add function to collect dependencies
+    function collectDependencies(talentId, visited = new Set()) {
+        if (visited.has(talentId)) {
+            return;
+        }
+        visited.add(talentId);
+
+        const talent = allTalents.find(t => t.id === talentId);
+        if (!talent) {
+            return;
+        }
+
+        const requiredTalentNames = getRequiredTalentNames(talent);
+
+        requiredTalentNames.forEach(reqName => {
+            const requiredTalent = findTalentByName(reqName);
+            if (requiredTalent && !selectedTalents.has(requiredTalent.id)) {
+                collectDependencies(requiredTalent.id, visited);
+            }
+        });
+    }
+
+    // Add function to calculate optimal build for talents
+    function calculateOptimalBuildForTalents(talents) {
+        const desiredStats = {};
+
+        // Collect all requirements from all talents
+        talents.forEach(talent => {
+            const requirements = getTalentRequirements(talent);
+            requirements.forEach(req => {
+                if (!desiredStats[req.stat]) {
+                    desiredStats[req.stat] = [];
+                }
+                // Use the maximum requirement for each stat
+                const existingReq = desiredStats[req.stat].find(r => r.condition === 'any');
+                if (existingReq) {
+                    existingReq.value = Math.max(existingReq.value, req.value);
+                } else {
+                    desiredStats[req.stat].push({ value: req.value, condition: 'any' });
+                }
+            });
+        });
+
+        // Use the existing calculateOptimalOrder function
+        return calculateOptimalOrder(desiredStats);
+    }
+
+    // Update the showTalentConfirmationModal function to show the actual shrine calculations
+    function showTalentConfirmationModal(talentIds, optimalBuild) {
+        const modal = document.getElementById('talentConfirmationModal');
+        const messageEl = document.getElementById('talentConfirmationMessage');
+        const talentsList = document.getElementById('selectedTalentsList');
+        const buildComparisonSection = document.getElementById('buildComparisonSection');
+
+        // Get current build stats
+        const currentBuild = collectManualBuildStats();
+
+        // Show talents being added
+        const talentsToAdd = talentIds.map(id => allTalents.find(t => t.id === id)).filter(t => t);
+
+        if (talentsToAdd.length === 1) {
+            messageEl.textContent = `Adding "${talentsToAdd[0].name}" requires the following optimal build:`;
+        } else {
+            messageEl.textContent = `Adding these talents requires the following optimal build:`;
+        }
+
+        talentsList.innerHTML = '';
+        talentsToAdd.forEach(talent => {
+            const li = document.createElement('li');
+            li.textContent = talent.name;
+            talentsList.appendChild(li);
+        });
+
+        // Show build comparison
+        buildComparisonSection.innerHTML = '';
+
+        if (!optimalBuild) {
+            buildComparisonSection.innerHTML = '<div class="no-changes-message">No optimal build could be calculated.</div>';
+        } else {
+            const comparisonDiv = document.createElement('div');
+            comparisonDiv.className = 'build-comparison';
+
+            // Current build column
+            const currentColumn = document.createElement('div');
+            currentColumn.className = 'build-column';
+            currentColumn.innerHTML = '<h3>Current Stats</h3>';
+
+            // Optimal build column
+            const optimalColumn = document.createElement('div');
+            optimalColumn.className = 'build-column';
+            optimalColumn.innerHTML = '<h3>Optimal Stats</h3>';
+
+            // Collect all unique stats
+            const allStats = new Set([
+                ...Object.keys(currentBuild.pre),
+                ...Object.keys(currentBuild.post),
+                ...Object.keys(optimalBuild.preShrine || {}),
+                ...Object.keys(optimalBuild.finalStats || {})
+            ]);
+
+            allStats.forEach(stat => {
+                const currentPre = currentBuild.pre[stat] || 0;
+                const currentPost = currentBuild.post[stat] || 0;
+                const currentMax = Math.max(currentPre, currentPost);
+
+                const optimalPre = (optimalBuild.preShrine && optimalBuild.preShrine[stat]) ? optimalBuild.preShrine[stat].currentPre : 0;
+
+                // Calculate the actual post-shrine value
+                const postShrineValue = optimalBuild.postShrine[stat] || 0;
+                const optimalFinal = optimalBuild.finalStats[stat] || 0;
+                const additionalInvestment = optimalFinal - postShrineValue;
+
+                // Show post-shrine value and additional investment separately
+               let optimalPostDisplay;
+                if (postShrineValue > 0 && additionalInvestment > 0) {
+                    optimalPostDisplay = `${optimalFinal}`;
+                } else if (postShrineValue > 0) {
+                    optimalPostDisplay = `${Math.floor(postShrineValue)}`;
+                } else {
+                    optimalPostDisplay = `${optimalFinal}`;
+                }
+
+                const changed = false//(currentPre !== optimalPre || currentPost !== optimalFinal) && (optimalPre > 0 || optimalFinal > 0);
+
+
+                // Current build stat
+                const currentStatDiv = document.createElement('div');
+                currentStatDiv.className = 'build-stat-item' + (changed ? ' changed' : '');
+                currentStatDiv.innerHTML = `
+                <span>${stat}:</span>
+                <span>${currentPre} | ${currentPost}</span>
+            `;
+                currentColumn.appendChild(currentStatDiv);
+
+                // Optimal build stat
+                const optimalStatDiv = document.createElement('div');
+                optimalStatDiv.className = 'build-stat-item' + (changed ? ' changed' : '');
+                optimalStatDiv.innerHTML = `
+                <span>${stat}:</span>
+                <span>${optimalPre} | ${optimalPostDisplay}</span>
+            `;
+                optimalColumn.appendChild(optimalStatDiv);
+            });
+
+            comparisonDiv.appendChild(currentColumn);
+            comparisonDiv.appendChild(optimalColumn);
+            buildComparisonSection.appendChild(comparisonDiv);
+        }
+
+        modal.classList.add('active');
+    }
+
+    // Add function to confirm talent selection
+    function confirmTalentSelection() {
+        if (!pendingTalentSelection) return;
+
+        // Add all pending talents
+        pendingTalentSelection.dependencyIds.forEach(id => {
+            selectedTalents.add(id);
+        });
+
+        // Apply optimal build if available
+        if (pendingOptimalBuild) {
+            applyOptimalBuildToStats(pendingOptimalBuild);
+        }
+
+        // Clear pending data
+        pendingTalentSelection = null;
+        pendingOptimalBuild = null;
+
+        // Close modal and re-render
+        document.getElementById('talentConfirmationModal').classList.remove('active');
         renderBothPanels();
+    }
+
+    // Add function to decline talent selection
+    function declineTalentSelection() {
+        // Clear pending data without adding talents
+        pendingTalentSelection = null;
+        pendingOptimalBuild = null;
+
+        // Close modal
+        document.getElementById('talentConfirmationModal').classList.remove('active');
+    }
+
+    function applyOptimalBuildToStats(solution) {
+        // Clear all inputs first
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+            preInput.value = 0;
+            postInput.value = 0;
+        });
+
+        // Apply pre-shrine values
+        for (const [statName, data] of Object.entries(solution.preShrine || {})) {
+            const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
+            if (statRow) {
+                const preInput = statRow.querySelector('.pre-shrine');
+                preInput.value = data.currentPre;
+            }
+        }
+
+        // NOW recalculate the shrine with the pre-shrine values we just set
+        const preShrineBuild = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const preInput = row.querySelector('.pre-shrine');
+            const preValue = parseInt(preInput.value) || 0;
+
+            if (preValue > 0) {
+                preShrineBuild[statName] = preValue;
+            }
+        });
+
+        // Simulate shrine averaging with the pre-shrine values
+        const shrineResult = simulateShrineAveraging(preShrineBuild);
+
+        // Apply post-shrine values (shrine result + additional investment)
+        for (const [statName, finalValue] of Object.entries(solution.finalStats || {})) {
+            const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
+            if (statRow) {
+                const postInput = statRow.querySelector('.post-shrine');
+                const postShrineValue = shrineResult.postShrine[statName] || 0;
+
+                // If stat was in shrine, apply shrine result + additional investment
+                if (postShrineValue > 0) {
+                    const additionalInvestment = finalValue - postShrineValue;
+                    postInput.value = postShrineValue + Math.max(0, additionalInvestment);
+                } else {
+                    // If stat wasn't in shrine, apply full final value
+                    postInput.value = finalValue;
+                }
+            }
+        }
+
+        // Sync to optimizer for all stats
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+            const preValue = parseInt(preInput.value) || 0;
+            const postValue = parseInt(postInput.value) || 0;
+            
+            syncToOptimizer(statName, preValue, postValue);
+        });
     }
 
     function unselectTalent(talentId) {
@@ -974,14 +1474,28 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBothPanels();
     }
 
-    function matchesFilters(talent, activeFilters) {
-        if (activeFilters.size === 0) return true;
+    function matchesFilters(talent, activeFilters, currentStats) {
+        // 1. Handle Availability Filters
+        const wantsAvailable = activeFilters.has('available');
+        const wantsUnavailable = activeFilters.has('unavailable');
+
+        if (wantsAvailable || wantsUnavailable) {
+            const available = isTalentAvailable(talent, currentStats);
+
+            if (wantsAvailable && !available) return false;
+            if (wantsUnavailable && available) return false;
+        }
+
+        // 2. Handle Stat Filters (existing logic)
+        const statFilters = new Set([...activeFilters].filter(f => f !== 'available' && f !== 'unavailable'));
+
+        if (statFilters.size === 0) return true;
 
         const requirements = getTalentRequirements(talent);
         const talentStats = new Set(requirements.map(req => req.stat));
 
-        // Talent must have ALL of the active filters (AND logic)
-        for (const filter of activeFilters) {
+        // Talent must have ALL of the active stat filters (AND logic)
+        for (const filter of statFilters) {
             if (!talentStats.has(filter)) {
                 return false;
             }
@@ -1004,9 +1518,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAvailableTalents() {
         const container = document.getElementById('availableTalents');
         const searchTerm = document.getElementById('searchAvailable').value;
+        const currentStats = getCurrentMaxBuildStats();
 
         // Filter out selected talents
-        const available = allTalents.filter(t => !selectedTalents.has(t.id));
+        let available = allTalents.filter(t => !selectedTalents.has(t.id));
+
+        // Apply rarity filter
+        available = filterByRarity(available);
 
         if (available.length === 0) {
             container.innerHTML = '<p class="empty-message">All talents selected</p>';
@@ -1016,10 +1534,14 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = '';
 
         let visibleCount = 0;
+
+        // Sort the talents before rendering
+        available = sortTalents(available, availableSortBy, availableSortOrder);
+
         available.forEach(talent => {
             const card = createTalentCard(talent, false);
 
-            const matchesFilter = matchesFilters(talent, availableFilters);
+            const matchesFilter = matchesFilters(talent, availableFilters, currentStats);
             const matchesSearchTerm = matchesSearch(talent, searchTerm);
 
             if (!matchesFilter || !matchesSearchTerm) {
@@ -1039,8 +1561,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderSelectedTalents() {
         const container = document.getElementById('selectedTalents');
         const searchTerm = document.getElementById('searchSelected').value;
+        const currentStats = {};
 
-        const selected = allTalents.filter(t => selectedTalents.has(t.id));
+        let selected = allTalents.filter(t => selectedTalents.has(t.id));
 
         if (selected.length === 0) {
             container.innerHTML = '<p class="empty-message">No talents selected</p>';
@@ -1050,6 +1573,10 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = '';
 
         let visibleCount = 0;
+
+        // Sort the selected talents before rendering
+        selected = sortTalents(selected, selectedSortBy, selectedSortOrder);
+
         selected.forEach(talent => {
             const card = createTalentCard(talent, true);
 
@@ -1111,6 +1638,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('searchSelected').addEventListener('input', () => {
         renderSelectedTalents();
+    });
+
+    // Setup rarity toggles
+    document.getElementById('toggleOrigin').addEventListener('change', (e) => {
+        showOriginTalents = e.target.checked;
+        renderAvailableTalents();
+    });
+
+    document.getElementById('toggleQuest').addEventListener('change', (e) => {
+        showQuestTalents = e.target.checked;
+        renderAvailableTalents();
+    });
+
+    // Setup sort controls for available talents
+    document.getElementById('sortBy').addEventListener('change', (e) => {
+        availableSortBy = e.target.value;
+        renderAvailableTalents();
+    });
+
+    document.getElementById('sortOrder').addEventListener('change', (e) => {
+        availableSortOrder = e.target.value;
+        renderAvailableTalents();
+    });
+
+    // Setup sort controls for selected talents
+    document.getElementById('sortBySelected').addEventListener('change', (e) => {
+        selectedSortBy = e.target.value;
+        renderSelectedTalents();
+    });
+
+    document.getElementById('sortOrderSelected').addEventListener('change', (e) => {
+        selectedSortOrder = e.target.value;
+        renderSelectedTalents();
+    });
+
+    document.getElementById('confirmBuildBtn').addEventListener('click', confirmTalentSelection);
+    document.getElementById('declineBuildBtn').addEventListener('click', declineTalentSelection);
+
+    // Close modal when clicking outside
+    document.getElementById('talentConfirmationModal').addEventListener('click', (e) => {
+        if (e.target.id === 'talentConfirmationModal') {
+            declineTalentSelection();
+        }
     });
 
     // Initialize talents tab
