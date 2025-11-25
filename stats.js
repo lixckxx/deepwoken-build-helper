@@ -870,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch talents data
     async function loadTalents() {
         try {
-            const response = await fetch('proxy.json');
+            const response = await fetch('./proxy.json');
             const data = await response.json();
 
             // List of talent IDs to hide
