@@ -295,8 +295,60 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleConditionChange = (event) => {
         const select = event.target;
         const inputElement = select.previousElementSibling;
+        const inputGroup = select.closest('.input-group');
+
         if (inputElement && inputElement.tagName === 'INPUT') {
             inputElement.setAttribute('data-condition', select.value);
+        }
+
+        // Handle "while" condition - add stat selector and value input
+        if (select.value === 'while') {
+            // Check if while controls already exist
+            let whileControls = inputGroup.querySelector('.while-controls');
+            if (!whileControls) {
+                whileControls = document.createElement('div');
+                whileControls.className = 'while-controls';
+
+                const statSelect = document.createElement('select');
+                statSelect.className = 'while-stat-select';
+                statSelect.innerHTML = `
+                    <option value="Strength">Strength</option>
+                    <option value="Fortitude">Fortitude</option>
+                    <option value="Agility">Agility</option>
+                    <option value="Intelligence">Intelligence</option>
+                    <option value="Willpower">Willpower</option>
+                    <option value="Charisma">Charisma</option>
+                    <option value="Heavy Wep.">Heavy Wep.</option>
+                    <option value="Medium Wep.">Medium Wep.</option>
+                    <option value="Light Wep.">Light Wep.</option>
+                    <option value="Flamecharm">Flamecharm</option>
+                    <option value="Frostdraw">Frostdraw</option>
+                    <option value="Thundercall">Thundercall</option>
+                    <option value="Galebreathe">Galebreathe</option>
+                    <option value="Shadowcast">Shadowcast</option>
+                    <option value="Ironsing">Ironsing</option>
+                    <option value="Bloodrend">Bloodrend</option>
+                `;
+
+                const valueInput = document.createElement('input');
+                valueInput.type = 'number';
+                valueInput.className = 'while-value-input';
+                valueInput.value = '0';
+                valueInput.placeholder = 'Value';
+                setupInputValidation(valueInput);
+
+                whileControls.appendChild(statSelect);
+                whileControls.appendChild(valueInput);
+
+                // Insert after the condition select
+                select.parentNode.insertBefore(whileControls, select.nextSibling);
+            }
+        } else {
+            // Remove while controls if they exist
+            const whileControls = inputGroup.querySelector('.while-controls');
+            if (whileControls) {
+                whileControls.remove();
+            }
         }
     };
 
@@ -359,12 +411,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const statName = statRow.getAttribute('data-stat');
             desiredStats[statName] = [];
 
-            statRow.querySelectorAll('.input-group input[type="number"]').forEach(input => {
+            statRow.querySelectorAll('.input-group').forEach(inputGroup => {
+                const input = inputGroup.querySelector('input[type="number"]');
                 const value = parseInt(input.value) || 0;
                 const condition = input.getAttribute('data-condition') || 'any';
 
                 if (value > 0) {
-                    desiredStats[statName].push({ value: value, condition: condition });
+                    const requirement = { value: value, condition: condition };
+
+                    // If condition is "while", add the while stat and value
+                    if (condition === 'while') {
+                        const whileControls = inputGroup.querySelector('.while-controls');
+                        if (whileControls) {
+                            const whileStat = whileControls.querySelector('.while-stat-select').value;
+                            const whileValue = parseInt(whileControls.querySelector('.while-value-input').value) || 0;
+                            requirement.whileStat = whileStat;
+                            requirement.whileValue = whileValue;
+                        }
+                    }
+
+                    desiredStats[statName].push(requirement);
                 }
             });
         });
@@ -389,7 +455,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 requirements: requirements,
                 minPre: 0,
                 minPost: 0,
-                hasAny: false
+                hasAny: false,
+                whileConditions: []
             };
 
             // Determine minimum pre/post requirements
@@ -400,13 +467,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     statRequirements[statName].minPost = Math.max(statRequirements[statName].minPost, req.value);
                 } else if (req.condition === 'any') {
                     statRequirements[statName].hasAny = true;
+                } else if (req.condition === 'while') {
+                    statRequirements[statName].whileConditions.push({
+                        value: req.value,
+                        whileStat: req.whileStat,
+                        whileValue: req.whileValue
+                    });
                 }
             }
         }
 
-        // Generate all possible combinations for 'any' conditions
+        // Generate all possible combinations for 'any' AND 'while' conditions
         function generateCombinations(statReqs) {
             const statsWithAny = [];
+            const statsWithWhile = [];
             const baseConfig = {};
 
             for (const [statName, data] of Object.entries(statReqs)) {
@@ -414,13 +488,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     isAttunement: data.isAttunement,
                     minPre: data.minPre,
                     minPost: data.minPost,
-                    anyRequirements: []
+                    anyRequirements: [],
+                    whileConditions: []
                 };
 
                 if (data.hasAny) {
                     const anyReqs = data.requirements.filter(r => r.condition === 'any');
                     baseConfig[statName].anyRequirements = anyReqs;
                     statsWithAny.push(statName);
+                }
+
+                if (data.whileConditions && data.whileConditions.length > 0) {
+                    baseConfig[statName].whileConditions = data.whileConditions;
+                    statsWithWhile.push(statName);
                 }
             }
 
@@ -448,7 +528,64 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
-                combinations.push(config);
+                // Now handle 'while' conditions - generate pre/post variants
+                // For while conditions, both stats must be in the same phase (pre or post)
+                const whileVariants = [];
+
+                if (statsWithWhile.length > 0) {
+                    // For each while condition, try both pre and post
+                    const totalWhileCombinations = Math.pow(2, statsWithWhile.length);
+
+                    for (let j = 0; j < totalWhileCombinations; j++) {
+                        const whileConfig = JSON.parse(JSON.stringify(config));
+
+                        statsWithWhile.forEach((statName, index) => {
+                            const isPre = (j >> index) & 1;
+
+                            whileConfig[statName].whileConditions.forEach(whileCond => {
+                                if (isPre) {
+                                    // Both stats must be pre-shrine
+                                    whileConfig[statName].minPre = Math.max(whileConfig[statName].minPre, whileCond.value);
+                                    if (!whileConfig[whileCond.whileStat]) {
+                                        whileConfig[whileCond.whileStat] = {
+                                            isAttunement: attunementStats.includes(whileCond.whileStat),
+                                            minPre: 0,
+                                            minPost: 0,
+                                            anyRequirements: [],
+                                            whileConditions: []
+                                        };
+                                    }
+                                    whileConfig[whileCond.whileStat].minPre = Math.max(
+                                        whileConfig[whileCond.whileStat].minPre,
+                                        whileCond.whileValue
+                                    );
+                                } else {
+                                    // Both stats must be post-shrine
+                                    whileConfig[statName].minPost = Math.max(whileConfig[statName].minPost, whileCond.value);
+                                    if (!whileConfig[whileCond.whileStat]) {
+                                        whileConfig[whileCond.whileStat] = {
+                                            isAttunement: attunementStats.includes(whileCond.whileStat),
+                                            minPre: 0,
+                                            minPost: 0,
+                                            anyRequirements: [],
+                                            whileConditions: []
+                                        };
+                                    }
+                                    whileConfig[whileCond.whileStat].minPost = Math.max(
+                                        whileConfig[whileCond.whileStat].minPost,
+                                        whileCond.whileValue
+                                    );
+                                }
+                            });
+                        });
+
+                        whileVariants.push(whileConfig);
+                    }
+                } else {
+                    whileVariants.push(config);
+                }
+
+                combinations.push(...whileVariants);
             }
 
             return combinations.length > 0 ? combinations : [baseConfig];
@@ -1160,6 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Update the selectTalent function
+    // Update the selectTalent function to handle talent requirements as 'while' conditions
     function selectTalent(talentId) {
         // Store the pending selection
         pendingTalentSelection = {
@@ -1220,15 +1358,45 @@ document.addEventListener('DOMContentLoaded', () => {
             mergedRequirements[statName].push({ value: value, condition: 'post' });
         }
 
-        // Add new talent requirements
+        // Add new talent requirements as 'while' conditions
+        // Group requirements by talent for proper 'while' condition handling
         newTalents.forEach(talent => {
             const requirements = getTalentRequirements(talent);
-            requirements.forEach(req => {
+
+            if (requirements.length === 0) return;
+
+            // If talent has multiple requirements, they should all be active simultaneously
+            // So we create 'while' conditions between them
+            for (let i = 0; i < requirements.length; i++) {
+                const req = requirements[i];
+
                 if (!mergedRequirements[req.stat]) {
                     mergedRequirements[req.stat] = [];
                 }
-                mergedRequirements[req.stat].push({ value: req.value, condition: 'any' });
-            });
+
+                // For each requirement, create 'while' conditions with all other requirements
+                // from the same talent
+                if (requirements.length > 1) {
+                    // This talent has multiple requirements - they need to be met simultaneously
+                    for (let j = 0; j < requirements.length; j++) {
+                        if (i !== j) {
+                            const otherReq = requirements[j];
+                            mergedRequirements[req.stat].push({
+                                value: req.value,
+                                condition: 'while',
+                                whileStat: otherReq.stat,
+                                whileValue: otherReq.value
+                            });
+                        }
+                    }
+                } else {
+                    // Single requirement - just add as 'any'
+                    mergedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'any'
+                    });
+                }
+            }
         });
 
         const hasNewRequirements = newTalents.some(talent => getTalentRequirements(talent).length > 0);

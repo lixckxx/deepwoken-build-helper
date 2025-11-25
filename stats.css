@@ -470,6 +470,7 @@ input[type="number"] {
     color: var(--card-text-primary);
     font-size: 0.95em;
     border-radius: 0;
+    box-sizing: border-box;
 }
 
 .search-bar input:focus {
@@ -1012,4 +1013,42 @@ input[type="number"] {
     text-align: center;
     color: var(--card-text-secondary);
     font-style: italic;
+}
+
+.while-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.while-stat-select {
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-background);
+    color: var(--card-text-primary);
+    font-size: 0.85em;
+    cursor: pointer;
+    border-radius: 0;
+}
+
+.while-stat-select:focus {
+    outline: none;
+    border-color: var(--card-text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+.while-value-input {
+    width: 45px;
+    text-align: right;
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-background);
+    color: var(--card-text-primary);
+    border-radius: 0;
+}
+
+.while-value-input:focus {
+    outline: none;
+    border-color: var(--card-text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
 }
