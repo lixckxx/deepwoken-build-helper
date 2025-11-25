@@ -1,44 +1,266 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Tab Navigation
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const tabName = button.getAttribute('data-tab');
+
+            // Remove active class from all buttons and contents
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            // Add active class to clicked button and corresponding content
+            button.classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        });
+    });
+
     // Global Constant for the point limit
     const MAX_TOTAL_POINTS = 330;
 
-    // Selectors
-    const addButtons = document.querySelectorAll('.add-input-btn');
-    const calculateButton = document.getElementById('calculateButton');
+    // ==========================================
+    // STATS TAB (Manual Build & Shrine)
+    // ==========================================
 
-    // ... (Condition Change Handler and Dynamic Input Management remain the same) ...
+    const shrineButton = document.getElementById('shrineButton');
+    const shrineResultsModal = document.getElementById('shrineResultsModal');
+    const closeShrineModal = document.getElementById('closeShrineModal');
+
+    // Function to sync stats to Point Optimizer
+    function syncToOptimizer(statName, preValue, postValue) {
+        // Find the corresponding stat row in the optimizer tab
+        const optimizerRow = document.querySelector(`#optimizer-tab .stat-row[data-stat="${statName}"]`);
+        if (!optimizerRow) return;
+
+        // Get the first input group
+        const firstInputGroup = optimizerRow.querySelector('.input-group');
+        const firstInput = firstInputGroup.querySelector('input[type="number"]');
+        const firstSelect = firstInputGroup.querySelector('.condition-select');
+
+        // Only update if condition is set to "any"
+        if (firstSelect.value === 'any') {
+            const maxValue = Math.max(preValue, postValue);
+            firstInput.value = maxValue;
+        }
+    }
+
+    // Setup input validation for simple inputs
+    const setupSimpleInputValidation = (input) => {
+        const statRow = input.closest('.stat-row.simple');
+        const statName = statRow.getAttribute('data-stat');
+
+        input.addEventListener('blur', () => {
+            let value = parseInt(input.value) || 0;
+            value = Math.max(0, Math.min(100, value));
+            input.value = value;
+            // updateTotalPoints();
+
+            // Sync to optimizer
+            const dualGroup = input.closest('.dual-input-group');
+            const preInput = dualGroup.querySelector('.pre-shrine');
+            const postInput = dualGroup.querySelector('.post-shrine');
+            syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                let value = parseInt(input.value) || 0;
+                value = Math.max(0, Math.min(100, value));
+                input.value = value;
+                // updateTotalPoints();
+
+                // Sync to optimizer
+                const dualGroup = input.closest('.dual-input-group');
+                const preInput = dualGroup.querySelector('.pre-shrine');
+                const postInput = dualGroup.querySelector('.post-shrine');
+                syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+
+                input.blur();
+            }
+        });
+
+        input.addEventListener('keypress', (e) => {
+            if (!/[0-9]/.test(e.key) &&
+                e.key !== 'Backspace' &&
+                e.key !== 'Delete' &&
+                e.key !== 'ArrowLeft' &&
+                e.key !== 'ArrowRight' &&
+                e.key !== 'Tab') {
+                e.preventDefault();
+            }
+        });
+
+        // input.addEventListener('input', updateTotalPoints);
+    };
+
+    // Apply validation to all simple inputs in stats tab
+    document.querySelectorAll('#stats-tab .simple-input').forEach(input => {
+        setupSimpleInputValidation(input);
+    });
+
+    function collectManualBuildStats() {
+        const stats = { pre: {}, post: {} };
+
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+
+            const preValue = parseInt(preInput.value) || 0;
+            const postValue = parseInt(postInput.value) || 0;
+
+            if (preValue > 0) {
+                stats.pre[statName] = preValue;
+            }
+            if (postValue > 0) {
+                stats.post[statName] = postValue;
+            }
+        });
+
+        return stats;
+    }
+
+    function simulateShrineAveraging(stats) {
+        const BOTTLENECK_LIMIT = 25;
+        const MAX_STAT = 100;
+        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
+
+        // Calculate total invested and affected stats
+        let totalInvested = 0;
+        const affectedStats = [];
+
+        for (const [statName, value] of Object.entries(stats)) {
+            if (value > 0) {
+                totalInvested += value;
+                affectedStats.push(statName);
+            }
+        }
+
+        if (affectedStats.length === 0) {
+            return { totalInvested: 0, postShrine: {}, leftoverPoints: 0 };
+        }
+
+        const pointsStart = totalInvested;
+        const preshrineBuild = { ...stats };
+        const postShrine = {};
+
+        // Initialize with average
+        for (const statName of affectedStats) {
+            postShrine[statName] = pointsStart / affectedStats.length;
+        }
+
+        // Bottlenecking process
+        let bottleneckedDivideBy = affectedStats.filter(s => !attunements.includes(s)).length;
+        const bottlenecked = [];
+        let bottleneckedStats = false;
+        let previousStats = { ...postShrine };
+
+        do {
+            let bottleneckedPoints = 0;
+            bottleneckedStats = false;
+
+            // Check for bottlenecking in non-attunement stats only
+            for (const statName of affectedStats) {
+                const isAttunement = attunements.includes(statName);
+
+                if (!isAttunement && !bottlenecked.includes(statName)) {
+                    const prevStat = previousStats[statName];
+                    const shrineStat = preshrineBuild[statName];
+                    const currentStat = postShrine[statName];
+
+                    if (shrineStat - currentStat > BOTTLENECK_LIMIT) {
+                        postShrine[statName] = shrineStat - BOTTLENECK_LIMIT;
+                        bottleneckedPoints += postShrine[statName] - prevStat;
+                        bottlenecked.push(statName);
+                        bottleneckedDivideBy--;
+                    }
+                }
+            }
+
+            // Redistribute bottlenecked points ONLY to non-bottlenecked NON-ATTUNEMENT stats
+            if (bottleneckedDivideBy > 0 && bottleneckedPoints !== 0) {
+                for (const statName of affectedStats) {
+                    const isAttunement = attunements.includes(statName);
+
+                    if (!isAttunement && !bottlenecked.includes(statName)) {
+                        postShrine[statName] -= bottleneckedPoints / bottleneckedDivideBy;
+
+                        if (preshrineBuild[statName] - postShrine[statName] > BOTTLENECK_LIMIT) {
+                            bottleneckedStats = true;
+                        }
+                    }
+                }
+            }
+
+            previousStats = { ...postShrine };
+        } while (bottleneckedStats);
+
+        // Floor all stats
+        for (const statName in postShrine) {
+            postShrine[statName] = Math.floor(postShrine[statName]);
+        }
+
+        // Calculate spare points
+        let sparePoints = pointsStart - Object.values(postShrine).reduce((a, b) => a + b, 0);
+
+        // Distribute spare points (repeatedly, 1 point at a time)
+        while (sparePoints > 0) {
+            let changed = false;
+
+            for (const statName of affectedStats) {
+                if (sparePoints <= 0) break;
+                if (bottlenecked.includes(statName)) continue;
+                if (postShrine[statName] >= MAX_STAT) continue;
+
+                postShrine[statName] += 1;
+                sparePoints -= 1;
+                changed = true;
+            }
+
+            if (!changed) break;
+        }
+
+        return {
+            totalInvested: pointsStart,
+            postShrine,
+            leftoverPoints: sparePoints
+        };
+    }
+
+
+
+    // ==========================================
+    // BUILD OPTIMIZER TAB
+    // ==========================================
+
+    const calculateButton = document.getElementById('calculateButton');
+    const addButtons = document.querySelectorAll('#optimizer-tab .add-input-btn');
 
     const handleInputValidation = (input) => {
         let value = parseInt(input.value) || 0;
-
-        // Clamp value between 0 and 100
         value = Math.max(0, Math.min(100, value));
-
-        // Update input with validated value
         input.value = value;
     };
 
     const setupInputValidation = (input) => {
-        // Handle blur to ensure proper formatting when leaving the field
         input.addEventListener('blur', () => {
             handleInputValidation(input);
         });
 
-        // Handle Enter key to validate immediately
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 handleInputValidation(input);
-                input.blur(); // Remove focus from input
+                input.blur();
             }
         });
 
-        // Prevent invalid characters
         input.addEventListener('keypress', (e) => {
-            // Allow only numbers, backspace, delete, arrow keys
-            if (!/[0-9]/.test(e.key) && 
-                e.key !== 'Backspace' && 
-                e.key !== 'Delete' && 
-                e.key !== 'ArrowLeft' && 
+            if (!/[0-9]/.test(e.key) &&
+                e.key !== 'Backspace' &&
+                e.key !== 'Delete' &&
+                e.key !== 'ArrowLeft' &&
                 e.key !== 'ArrowRight' &&
                 e.key !== 'Tab') {
                 e.preventDefault();
@@ -46,8 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // Apply validation to all existing inputs
-    document.querySelectorAll('input[type="number"]').forEach(input => {
+    // Apply validation to all existing optimizer inputs
+    document.querySelectorAll('#optimizer-tab input[type="number"]').forEach(input => {
         setupInputValidation(input);
     });
 
@@ -59,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    document.querySelectorAll('.condition-select').forEach(select => {
+    document.querySelectorAll('#optimizer-tab .condition-select').forEach(select => {
         select.addEventListener('change', handleConditionChange);
     });
 
@@ -75,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 newInput.value = '0';
                 newInput.classList.add('dynamic-input');
                 newInput.setAttribute('data-condition', 'any');
+                setupInputValidation(newInput);
 
                 const newSelect = document.createElement('select');
                 newSelect.classList.add('condition-select');
@@ -113,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function collectDesiredStats() {
         const desiredStats = {};
 
-        document.querySelectorAll('.stat-row[data-stat]').forEach(statRow => {
+        document.querySelectorAll('#optimizer-tab .stat-row[data-stat]').forEach(statRow => {
             const statName = statRow.getAttribute('data-stat');
             desiredStats[statName] = [];
 
@@ -129,16 +352,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return desiredStats;
     }
 
-    /**
-     * Calculates the optimal distribution for pre-shrine, shrine averaging, and post-shrine.
-     */
     function calculateOptimalOrder(desiredStats) {
         const MAX_TOTAL_POINTS = 330;
         const MAX_STAT_VALUE = 100;
         const BOTTLENECK_LIMIT = 25;
 
         // Identify attunement stats
-        const attunementStats = ['flamecharm', 'frostdraw', 'thundercall', 'galebreathe', 'shadowcast', 'ironsing', 'bloodrend'];
+        const attunementStats = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
 
         // Parse requirements for each stat
         const statRequirements = {};
@@ -146,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (requirements.length === 0) continue;
 
             statRequirements[statName] = {
-                isAttunement: attunementStats.includes(statName.toLowerCase()),
+                isAttunement: attunementStats.includes(statName),
                 requirements: requirements,
                 minPre: 0,
                 minPost: 0,
@@ -216,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const allCombinations = generateCombinations(statRequirements);
-        
+
         // Generate shrine inclusion variants for post-only stats
         const allCombinationsWithShrineOptions = [];
         for (const config of allCombinations) {
@@ -234,15 +454,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     config: config,
                     shrineInclusions: {}
                 };
-                
+
                 for (let j = 0; j < postOnlyStats.length; j++) {
                     const includeInShrine = (i >> j) & 1;
                     variant.shrineInclusions[postOnlyStats[j]] = includeInShrine === 1;
                 }
-                
+
                 allCombinationsWithShrineOptions.push(variant);
             }
-            
+
             // If no post-only stats, just add the config as-is
             if (postOnlyStats.length === 0) {
                 allCombinationsWithShrineOptions.push({
@@ -251,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        
+
         console.log(`Testing ${allCombinationsWithShrineOptions.length} combinations (including shrine inclusion variants)...`);
 
         let bestSolution = null;
@@ -259,7 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const variant of allCombinationsWithShrineOptions) {
             const config = variant.config;
-            
+
             // Build pre-shrine allocation
             const preShrine = {};
             const statsToInclude = new Set();
@@ -283,7 +503,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         statsToInclude.add(statName);
                     }
-                    // Otherwise, exclude from shrine (will invest fully post-shrine)
                 }
             }
 
@@ -296,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (totalPreInvestment > MAX_TOTAL_POINTS) continue;
 
             // Simulate shrine averaging
-            const shrineResult = simulateShrineAveraging(preShrine);
+            const shrineResult = simulateShrineAveragingOptimizer(preShrine);
 
             // Check if post-shrine values meet requirements
             let isValid = true;
@@ -305,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const [statName, data] of Object.entries(config)) {
                 const postShrineValue = shrineResult.postShrine[statName] || 0;
-                
+
                 // For stats excluded from shrine, invest all points post-shrine
                 if (data.minPost > 0 && data.minPre === 0 && !variant.shrineInclusions[statName]) {
                     finalStats[statName] = data.minPost;
@@ -330,13 +549,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-
-
             const totalPoints = totalPostInvestment + totalPreInvestment;
             if (!isValid || totalPoints > MAX_TOTAL_POINTS) continue;
-            console.log(finalStats)
+
             // Calculate score (prefer more leftover points)
-            const leftoverPoints = MAX_TOTAL_POINTS - totalPoints;// + shrineResult.leftoverPoints;
+            const leftoverPoints = MAX_TOTAL_POINTS - totalPoints;
             const score = leftoverPoints;
 
             if (score > bestScore) {
@@ -378,10 +595,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return bestSolution;
     }
 
-    function simulateShrineAveraging(stats) {
+    function simulateShrineAveragingOptimizer(stats) {
         const BOTTLENECK_LIMIT = 25;
         const MAX_STAT = 100;
-        const attunements = ['flamecharm', 'frostdraw', 'thundercall', 'galebreathe', 'shadowcast', 'ironsing', 'bloodrend'];
+        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
 
         // Calculate total invested and affected stats
         let totalInvested = 0;
@@ -420,8 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Check for bottlenecking in non-attunement stats only
             for (const statName of affectedStats) {
-                const isAttunement = attunements.includes(statName.toLowerCase());
-                //console.log(isAttunement, statName.toLowerCase())
+                const isAttunement = attunements.includes(statName);
 
                 if (!isAttunement && !bottlenecked.includes(statName)) {
                     const prevStat = previousStats[statName];
@@ -487,11 +703,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-
     function handleCalculateClick() {
         const desiredStats = collectDesiredStats();
-
-        // The collectDesiredStats function already filters out 0-value requirements.
 
         console.log('--- User Desired Requirements ---');
         console.table(desiredStats);
@@ -505,12 +718,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function calculatePower(points) {
-        const power = Math.floor((points - 15) / 15);
-        return Math.max(0, Math.min(20, power));
-    }
-
     function displayResults(solution) {
+        window.currentSolution = solution;
+
         const modal = document.getElementById('resultsModal');
 
         // Populate summary
@@ -538,8 +748,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Show all final stats
         for (const [stat, finalValue] of Object.entries(solution.finalStats)) {
-            if (finalValue === 0) continue; // Skip stats with 0 final value
-            
+            if (finalValue === 0) continue;
+
             const statItem = document.createElement('div');
             statItem.className = 'stat-item';
 
@@ -574,9 +784,65 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('active');
     }
 
+    function applyToBuilder(solution) {
+        // Clear all inputs first
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+            preInput.value = 0;
+            postInput.value = 0;
+        });
+
+        // Apply pre-shrine values
+        for (const [statName, data] of Object.entries(solution.preShrine)) {
+            const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
+            if (statRow) {
+                const preInput = statRow.querySelector('.pre-shrine');
+                preInput.value = data.currentPre;
+            }
+        }
+
+        // Apply final values as post-shrine
+        for (const [statName, finalValue] of Object.entries(solution.finalStats)) {
+            const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
+            if (statRow) {
+                const postInput = statRow.querySelector('.post-shrine');
+
+                // If stat was in shrine, post value is final value
+                // If stat was excluded from shrine, post value is final value
+                postInput.value = finalValue;
+            }
+        }
+
+        // Switch to Build tab
+        const buildTab = document.querySelector('.tab-btn[data-tab="stats"]');
+        const statsTabContent = document.getElementById('stats-tab');
+
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        buildTab.classList.add('active');
+        statsTabContent.classList.add('active');
+
+        // Close modal
+        document.getElementById('resultsModal').classList.remove('active');
+
+        // Show success message
+       alert('Build applied successfully!');
+    }
+
+    // Attach event listener to Apply to Builder button
+    document.getElementById('applyToBuilderBtn').addEventListener('click', () => {
+        console.log(window.currentSolution)
+        if (window.currentSolution) {
+            console.log("solution")
+            applyToBuilder(window.currentSolution);
+        }
+    });
+
     // Close modal functionality
     const modal = document.getElementById('resultsModal');
-    const closeBtn = document.querySelector('.close-btn');
+    const closeBtn = modal.querySelector('.close-btn');
 
     closeBtn.addEventListener('click', () => {
         modal.classList.remove('active');
@@ -591,4 +857,264 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Attach Calculate Listener ---
     calculateButton.addEventListener('click', handleCalculateClick);
+
+    // ==========================================
+    // TALENTS TAB
+    // ==========================================
+
+    let allTalents = [];
+    let selectedTalents = new Set();
+    let availableFilters = new Set();
+    let selectedFilters = new Set();
+
+    // Fetch talents data
+    async function loadTalents() {
+        try {
+            const response = await fetch('proxy.json');
+            const data = await response.json();
+
+            // List of talent IDs to hide
+            const hiddenTalents = ['thank you'];
+
+            // Convert object to array and filter out invalid entries and hidden talents
+            allTalents = Object.entries(data)
+                .filter(([key, talent]) => talent && talent.name && !hiddenTalents.includes(key.toLowerCase()))
+                .map(([key, talent]) => ({
+                    id: key,
+                    ...talent
+                }));
+
+            console.log(`Loaded ${allTalents.length} talents`);
+            renderAvailableTalents();
+        } catch (error) {
+            console.error('Error loading talents:', error);
+            document.getElementById('availableTalents').innerHTML =
+                '<p class="empty-message">Error loading talents. Please check console.</p>';
+        }
+    }
+
+    function getTalentRequirements(talent) {
+        const reqs = [];
+
+        if (talent.reqs) {
+            // Base stats
+            if (talent.reqs.base) {
+                for (const [stat, value] of Object.entries(talent.reqs.base)) {
+                    if (value > 0 && stat !== 'Body' && stat !== 'Mind') {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+
+            // Weapon stats
+            if (talent.reqs.weapon) {
+                for (const [stat, value] of Object.entries(talent.reqs.weapon)) {
+                    if (value > 0) {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+
+            // Attunement stats
+            if (talent.reqs.attunement) {
+                for (const [stat, value] of Object.entries(talent.reqs.attunement)) {
+                    if (value > 0) {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+        }
+
+        return reqs;
+    }
+
+    function createTalentCard(talent, isSelected = false) {
+        const card = document.createElement('div');
+        card.className = 'talent-card';
+        card.dataset.talentId = talent.id;
+
+        const requirements = getTalentRequirements(talent);
+
+        let reqsHTML = '';
+        if (requirements.length > 0) {
+            reqsHTML = '<div class="talent-requirements">';
+            requirements.forEach(req => {
+                reqsHTML += `<span class="req-badge">${req.stat}: ${req.value}</span>`;
+            });
+            reqsHTML += '</div>';
+        }
+
+        card.innerHTML = `
+            <div class="talent-header">
+                <span class="talent-name">${talent.name}</span>
+                <span class="talent-rarity">${talent.rarity || 'Common'}</span>
+            </div>
+            <div class="talent-desc">${talent.desc || 'No description available'}</div>
+            ${reqsHTML}
+        `;
+
+        card.addEventListener('click', () => {
+            if (isSelected) {
+                unselectTalent(talent.id);
+            } else {
+                selectTalent(talent.id);
+            }
+        });
+
+        return card;
+    }
+
+    function selectTalent(talentId) {
+        selectedTalents.add(talentId);
+        renderBothPanels();
+    }
+
+    function unselectTalent(talentId) {
+        selectedTalents.delete(talentId);
+        renderBothPanels();
+    }
+
+    function matchesFilters(talent, activeFilters) {
+        if (activeFilters.size === 0) return true;
+
+        const requirements = getTalentRequirements(talent);
+        const talentStats = new Set(requirements.map(req => req.stat));
+
+        // Talent must have ALL of the active filters (AND logic)
+        for (const filter of activeFilters) {
+            if (!talentStats.has(filter)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function matchesSearch(talent, searchTerm) {
+        if (!searchTerm) return true;
+
+        const term = searchTerm.toLowerCase();
+        return (
+            talent.name.toLowerCase().includes(term) ||
+            (talent.desc && talent.desc.toLowerCase().includes(term)) ||
+            (talent.category && talent.category.toLowerCase().includes(term))
+        );
+    }
+
+    function renderAvailableTalents() {
+        const container = document.getElementById('availableTalents');
+        const searchTerm = document.getElementById('searchAvailable').value;
+
+        // Filter out selected talents
+        const available = allTalents.filter(t => !selectedTalents.has(t.id));
+
+        if (available.length === 0) {
+            container.innerHTML = '<p class="empty-message">All talents selected</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+
+        let visibleCount = 0;
+        available.forEach(talent => {
+            const card = createTalentCard(talent, false);
+
+            const matchesFilter = matchesFilters(talent, availableFilters);
+            const matchesSearchTerm = matchesSearch(talent, searchTerm);
+
+            if (!matchesFilter || !matchesSearchTerm) {
+                card.classList.add('hidden');
+            } else {
+                visibleCount++;
+            }
+
+            container.appendChild(card);
+        });
+
+        if (visibleCount === 0) {
+            container.innerHTML = '<p class="empty-message">No talents match your filters</p>';
+        }
+    }
+
+    function renderSelectedTalents() {
+        const container = document.getElementById('selectedTalents');
+        const searchTerm = document.getElementById('searchSelected').value;
+
+        const selected = allTalents.filter(t => selectedTalents.has(t.id));
+
+        if (selected.length === 0) {
+            container.innerHTML = '<p class="empty-message">No talents selected</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+
+        let visibleCount = 0;
+        selected.forEach(talent => {
+            const card = createTalentCard(talent, true);
+
+            const matchesFilter = matchesFilters(talent, selectedFilters);
+            const matchesSearchTerm = matchesSearch(talent, searchTerm);
+
+            if (!matchesFilter || !matchesSearchTerm) {
+                card.classList.add('hidden');
+            } else {
+                visibleCount++;
+            }
+
+            container.appendChild(card);
+        });
+
+        if (visibleCount === 0) {
+            container.innerHTML = '<p class="empty-message">No selected talents match your filters</p>';
+        }
+    }
+
+    function renderBothPanels() {
+        renderAvailableTalents();
+        renderSelectedTalents();
+    }
+
+    // Setup filter buttons
+    function setupFilterButtons(containerId, filterSet) {
+        const container = document.getElementById(containerId);
+        const filterButtons = container.querySelectorAll('.filter-btn:not(.clear-filters)');
+        const clearButton = container.querySelector('.clear-filters');
+
+        filterButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const filter = button.getAttribute('data-filter');
+
+                if (filterSet.has(filter)) {
+                    filterSet.delete(filter);
+                    button.classList.remove('active');
+                } else {
+                    filterSet.add(filter);
+                    button.classList.add('active');
+                }
+
+                renderBothPanels();
+            });
+        });
+
+        clearButton.addEventListener('click', () => {
+            filterSet.clear();
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            renderBothPanels();
+        });
+    }
+
+    // Setup search bars
+    document.getElementById('searchAvailable').addEventListener('input', () => {
+        renderAvailableTalents();
+    });
+
+    document.getElementById('searchSelected').addEventListener('input', () => {
+        renderSelectedTalents();
+    });
+
+    // Initialize talents tab
+    setupFilterButtons('availableFilters', availableFilters);
+    setupFilterButtons('selectedFilters', selectedFilters);
+    loadTalents();
 });
