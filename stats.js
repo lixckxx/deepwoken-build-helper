@@ -888,12 +888,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Rarity toggle states
     let showOriginTalents = true;
     let showQuestTalents = true;
+    let showOathTalents = true
 
     // Sort settings
-    let availableSortBy = 'name';
-    let availableSortOrder = 'asc';
-    let selectedSortBy = 'name';
-    let selectedSortOrder = 'asc';
+    let availableSortBy = 'points';
+    let availableSortOrder = 'desc';
+    let selectedSortBy = 'points';
+    let selectedSortOrder = 'desc';
 
 
     let pendingTalentSelection = null;
@@ -1003,6 +1004,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return requirements.reduce((sum, req) => sum + req.value, 0);
     }
 
+    function requiresOath(talent, visited = new Set()) {
+        // Prevent infinite loops
+        if (visited.has(talent.id)) {
+            return false;
+        }
+        visited.add(talent.id);
+
+        // Check if this talent directly requires an oath
+        if (talent.reqs && talent.reqs.from) {
+            if (talent.reqs.from.includes('Oath:')) {
+                return true;
+            }
+        }
+
+        // Check if any required talents require an oath
+        const requiredTalentNames = getRequiredTalentNames(talent);
+        for (const reqName of requiredTalentNames) {
+            const requiredTalent = findTalentByName(reqName);
+            if (requiredTalent && requiresOath(requiredTalent, visited)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Function to filter talents by rarity
     function filterByRarity(talents) {
         return talents.filter(talent => {
@@ -1015,6 +1042,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // If Quest talent and toggle is off, filter it out
             if (rarity === 'Quest' && !showQuestTalents) {
+                return false;
+            }
+
+            // If talent requires oath and toggle is off, filter it out
+            if (!showOathTalents && requiresOath(talent)) {
                 return false;
             }
 
@@ -1127,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedTalents.add(talentId);
     }
 
-   // Update the selectTalent function
+    // Update the selectTalent function
     function selectTalent(talentId) {
         // Store the pending selection
         pendingTalentSelection = {
@@ -1142,10 +1174,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Get current build stats (max of pre and post)
         const currentMaxStats = getCurrentMaxBuildStats();
-        
+
         // Get requirements from new talents
         const newTalents = pendingTalentSelection.dependencyIds.map(id => allTalents.find(t => t.id === id)).filter(t => t);
-        
+
         // Check if all requirements are already met
         let allRequirementsMet = true;
         for (const talent of newTalents) {
@@ -1158,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!allRequirementsMet) break;
         }
-        
+
         // If all requirements are met, just add the talents without showing modal
         if (allRequirementsMet) {
             pendingTalentSelection.dependencyIds.forEach(id => {
@@ -1168,11 +1200,11 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBothPanels();
             return;
         }
-        
+
         // Merge current build with new talent requirements
         const currentBuild = collectManualBuildStats();
         const mergedRequirements = {};
-        
+
         // Add current build as requirements
         for (const [statName, value] of Object.entries(currentBuild.pre)) {
             if (!mergedRequirements[statName]) {
@@ -1180,14 +1212,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             mergedRequirements[statName].push({ value: value, condition: 'pre' });
         }
-        
+
         for (const [statName, value] of Object.entries(currentBuild.post)) {
             if (!mergedRequirements[statName]) {
                 mergedRequirements[statName] = [];
             }
             mergedRequirements[statName].push({ value: value, condition: 'post' });
         }
-        
+
         // Add new talent requirements
         newTalents.forEach(talent => {
             const requirements = getTalentRequirements(talent);
@@ -1334,7 +1366,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const additionalInvestment = optimalFinal - postShrineValue;
 
                 // Show post-shrine value and additional investment separately
-               let optimalPostDisplay;
+                let optimalPostDisplay;
                 if (postShrineValue > 0 && additionalInvestment > 0) {
                     optimalPostDisplay = `${optimalFinal}`;
                 } else if (postShrineValue > 0) {
@@ -1464,7 +1496,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const postInput = row.querySelector('.post-shrine');
             const preValue = parseInt(preInput.value) || 0;
             const postValue = parseInt(postInput.value) || 0;
-            
+
             syncToOptimizer(statName, preValue, postValue);
         });
     }
@@ -1557,6 +1589,7 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = '<p class="empty-message">No talents match your filters</p>';
         }
     }
+
 
     function renderSelectedTalents() {
         const container = document.getElementById('selectedTalents');
@@ -1651,6 +1684,11 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAvailableTalents();
     });
 
+    document.getElementById('toggleOath').addEventListener('change', (e) => {
+        showOathTalents = e.target.checked;
+        renderAvailableTalents();
+    });
+
     // Setup sort controls for available talents
     document.getElementById('sortBy').addEventListener('change', (e) => {
         availableSortBy = e.target.value;
@@ -1682,6 +1720,11 @@ document.addEventListener('DOMContentLoaded', () => {
             declineTalentSelection();
         }
     });
+
+    document.getElementById('sortBy').value = availableSortBy;
+    document.getElementById('sortOrder').value = availableSortOrder;
+    document.getElementById('sortBySelected').value = selectedSortBy;
+    document.getElementById('sortOrderSelected').value = selectedSortOrder;
 
     // Initialize talents tab
     setupFilterButtons('availableFilters', availableFilters);

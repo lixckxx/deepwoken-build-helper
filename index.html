@@ -485,48 +485,52 @@
 
                     <!-- Rarity Toggles -->
                     <div class="rarity-toggles">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="toggleOrigin" checked>
-                            <span>Show Origin Talents</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="toggleQuest" checked>
-                            <span>Show Quest Talents</span>
-                        </label>
-                    </div>
+    <label class="toggle-label">
+        <input type="checkbox" id="toggleOrigin" checked>
+        <span>Show Origin Talents</span>
+    </label>
+    <label class="toggle-label">
+        <input type="checkbox" id="toggleQuest" checked>
+        <span>Show Quest Talents</span>
+    </label>
+    <label class="toggle-label">
+        <input type="checkbox" id="toggleOath" checked>
+        <span>Show Oath Talents</span>
+    </label>
+</div>
 
                     <!-- Sort Controls -->
                     <div class="sort-controls">
                         <label>Sort by:</label>
                         <select id="sortBy">
                             <option value="name">Name</option>
-                            <option value="points">Points</option>
+                            <option value="points" selected>Points</option>
                         </select>
                         <select id="sortOrder">
                             <option value="asc">Ascending</option>
-                            <option value="desc">Descending</option>
+                            <option value="desc" selected>Descending</option>
                         </select>
                     </div>
 
                     <div class="filter-buttons" id="availableFilters">
                         <button class="filter-btn availability-btn" data-filter="available">Available</button>
                         <button class="filter-btn availability-btn" data-filter="unavailable">Unavailable</button>
-                        <button class="filter-btn" data-filter="Strength">STR</button>
-                        <button class="filter-btn" data-filter="Fortitude">FOR</button>
-                        <button class="filter-btn" data-filter="Agility">AGI</button>
-                        <button class="filter-btn" data-filter="Intelligence">INT</button>
-                        <button class="filter-btn" data-filter="Willpower">WIL</button>
-                        <button class="filter-btn" data-filter="Charisma">CHA</button>
-                        <button class="filter-btn" data-filter="Heavy Wep.">HVY</button>
-                        <button class="filter-btn" data-filter="Medium Wep.">MED</button>
-                        <button class="filter-btn" data-filter="Light Wep.">LGT</button>
-                        <button class="filter-btn" data-filter="Flamecharm">FLM</button>
-                        <button class="filter-btn" data-filter="Frostdraw">FRS</button>
-                        <button class="filter-btn" data-filter="Thundercall">THN</button>
-                        <button class="filter-btn" data-filter="Galebreathe">GLE</button>
-                        <button class="filter-btn" data-filter="Shadowcast">SHD</button>
-                        <button class="filter-btn" data-filter="Ironsing">IRN</button>
-                        <button class="filter-btn" data-filter="Bloodrend">BLD</button>
+                        <button class="filter-btn" data-filter="Strength">Strength</button>
+                        <button class="filter-btn" data-filter="Fortitude">Fortitude</button>
+                        <button class="filter-btn" data-filter="Agility">Agility</button>
+                        <button class="filter-btn" data-filter="Intelligence">Intelligence</button>
+                        <button class="filter-btn" data-filter="Willpower">Willpower</button>
+                        <button class="filter-btn" data-filter="Charisma">Charisma</button>
+                        <button class="filter-btn" data-filter="Heavy Wep.">Heavy</button>
+                        <button class="filter-btn" data-filter="Medium Wep.">Medium</button>
+                        <button class="filter-btn" data-filter="Light Wep.">Light</button>
+                        <button class="filter-btn" data-filter="Flamecharm">Flame</button>
+                        <button class="filter-btn" data-filter="Frostdraw">Frostdraw</button>
+                        <button class="filter-btn" data-filter="Thundercall">Thundercall</button>
+                        <button class="filter-btn" data-filter="Galebreathe">Galebreathe</button>
+                        <button class="filter-btn" data-filter="Shadowcast">Shadowcast</button>
+                        <button class="filter-btn" data-filter="Ironsing">Ironsing</button>
+                        <button class="filter-btn" data-filter="Bloodrend">Bloodrend</button>
                         <button class="filter-btn clear-filters">Clear</button>
                     </div>
 
@@ -551,11 +555,11 @@
                         <label>Sort by:</label>
                         <select id="sortBySelected">
                             <option value="name">Name</option>
-                            <option value="points">Points</option>
+                            <option value="points" selected>Points</option>
                         </select>
                         <select id="sortOrderSelected">
                             <option value="asc">Ascending</option>
-                            <option value="desc">Descending</option>
+                            <option value="desc" selected>Descending</option>
                         </select>
                     </div>
 
