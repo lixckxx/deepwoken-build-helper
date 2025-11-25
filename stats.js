@@ -1482,9 +1482,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const talentsToAdd = talentIds.map(id => allTalents.find(t => t.id === id)).filter(t => t);
 
         if (talentsToAdd.length === 1) {
-            messageEl.textContent = `Adding "${talentsToAdd[0].name}" requires the following optimal build:`;
+            messageEl.textContent = `Adding "${talentsToAdd[0].name}" requires the following stats:`;
         } else {
-            messageEl.textContent = `Adding these talents requires the following optimal build:`;
+            messageEl.textContent = `Adding these talents requires the following stats:`;
         }
 
         talentsList.innerHTML = '';
