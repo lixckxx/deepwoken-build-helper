@@ -294,60 +294,86 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const handleConditionChange = (event) => {
         const select = event.target;
-        const inputElement = select.previousElementSibling;
         const inputGroup = select.closest('.input-group');
+
+        // Find the input that corresponds to this select
+        // Look backwards from the select to find the nearest input[type="number"] that's not a while-value-input
+        let inputElement = select.previousElementSibling;
+        while (inputElement && (inputElement.tagName !== 'INPUT' || inputElement.classList.contains('while-value-input'))) {
+            inputElement = inputElement.previousElementSibling;
+        }
 
         if (inputElement && inputElement.tagName === 'INPUT') {
             inputElement.setAttribute('data-condition', select.value);
         }
 
-        // Handle "while" condition - add stat selector and value input
-        if (select.value === 'while') {
-            // Check if while controls already exist
-            let whileControls = inputGroup.querySelector('.while-controls');
-            if (!whileControls) {
-                whileControls = document.createElement('div');
-                whileControls.className = 'while-controls';
+        // Find the container for this specific condition (input + select + optional while-controls)
+        // We need to look for while-controls that are siblings of this select
+        let whileControls = select.nextElementSibling;
+        while (whileControls && !whileControls.classList.contains('while-controls') &&
+            !whileControls.classList.contains('condition-select') &&
+            !whileControls.tagName === 'INPUT') {
+            whileControls = whileControls.nextElementSibling;
+        }
 
-                const statSelect = document.createElement('select');
-                statSelect.className = 'while-stat-select';
-                statSelect.innerHTML = `
-                    <option value="Strength">Strength</option>
-                    <option value="Fortitude">Fortitude</option>
-                    <option value="Agility">Agility</option>
-                    <option value="Intelligence">Intelligence</option>
-                    <option value="Willpower">Willpower</option>
-                    <option value="Charisma">Charisma</option>
-                    <option value="Heavy Wep.">Heavy Wep.</option>
-                    <option value="Medium Wep.">Medium Wep.</option>
-                    <option value="Light Wep.">Light Wep.</option>
-                    <option value="Flamecharm">Flamecharm</option>
-                    <option value="Frostdraw">Frostdraw</option>
-                    <option value="Thundercall">Thundercall</option>
-                    <option value="Galebreathe">Galebreathe</option>
-                    <option value="Shadowcast">Shadowcast</option>
-                    <option value="Ironsing">Ironsing</option>
-                    <option value="Bloodrend">Bloodrend</option>
-                `;
-
-                const valueInput = document.createElement('input');
-                valueInput.type = 'number';
-                valueInput.className = 'while-value-input';
-                valueInput.value = '0';
-                valueInput.placeholder = 'Value';
-                setupInputValidation(valueInput);
-
-                whileControls.appendChild(statSelect);
-                whileControls.appendChild(valueInput);
-
-                // Insert after the condition select
-                select.parentNode.insertBefore(whileControls, select.nextSibling);
-            }
-        } else {
-            // Remove while controls if they exist
-            const whileControls = inputGroup.querySelector('.while-controls');
-            if (whileControls) {
+        // If we found while-controls as the next sibling, that's the one for this select
+        if (whileControls && whileControls.classList.contains('while-controls')) {
+            // This select already has while-controls
+            if (select.value !== 'while') {
                 whileControls.remove();
+            }
+        } else if (select.value === 'while') {
+            // Get the current stat name from the stat-row
+            const statRow = select.closest('.stat-row');
+            const currentStat = statRow.getAttribute('data-stat');
+
+            // Need to create while controls
+            whileControls = document.createElement('div');
+            whileControls.className = 'while-controls';
+
+            const statSelect = document.createElement('select');
+            statSelect.className = 'while-stat-select';
+
+            // Create options array, excluding the current stat
+            const allStats = [
+                'Strength', 'Fortitude', 'Agility', 'Intelligence', 'Willpower', 'Charisma',
+                'Heavy Wep.', 'Medium Wep.', 'Light Wep.',
+                'Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'
+            ];
+
+            const optionsHTML = allStats
+                .filter(stat => stat !== currentStat)
+                .map(stat => `<option value="${stat}">${stat}</option>`)
+                .join('');
+
+            statSelect.innerHTML = optionsHTML;
+
+            const valueInput = document.createElement('input');
+            valueInput.type = 'number';
+            valueInput.className = 'while-value-input';
+            valueInput.value = '0';
+            valueInput.placeholder = 'Value';
+            setupInputValidation(valueInput);
+
+            whileControls.appendChild(statSelect);
+            whileControls.appendChild(valueInput);
+
+            // Insert after the select (or after the remove button if it exists)
+            let insertAfter = select.nextElementSibling;
+            if (insertAfter && insertAfter.classList.contains('remove-input-btn')) {
+                // Insert after the remove button
+                if (insertAfter.nextElementSibling) {
+                    inputGroup.insertBefore(whileControls, insertAfter.nextElementSibling);
+                } else {
+                    inputGroup.appendChild(whileControls);
+                }
+            } else {
+                // Insert right after the select
+                if (insertAfter) {
+                    inputGroup.insertBefore(whileControls, insertAfter);
+                } else {
+                    inputGroup.appendChild(whileControls);
+                }
             }
         }
     };
@@ -362,7 +388,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputGroup = statRow.querySelector('.input-group');
             const currentInputs = inputGroup.querySelectorAll('input[type="number"]').length;
 
-            if (currentInputs < 2) {
+            // Only count the main stat inputs, not while-condition inputs
+            const mainInputs = Array.from(inputGroup.querySelectorAll('input[type="number"]')).filter(input =>
+                !input.classList.contains('while-value-input')
+            );
+
+            if (mainInputs.length < 2) {
                 const newInput = document.createElement('input');
                 newInput.type = 'number';
                 newInput.value = '0';
@@ -373,10 +404,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newSelect = document.createElement('select');
                 newSelect.classList.add('condition-select');
                 newSelect.innerHTML = `
-                    <option value="any">Any</option>
-                    <option value="pre">Pre-Shrine</option>
-                    <option value="post">Post-Shrine</option>
-                `;
+                <option value="any">Any</option>
+                <option value="pre">Pre-Shrine</option>
+                <option value="post">Post-Shrine</option>
+                <option value="while">While</option>
+            `;
                 newSelect.addEventListener('change', handleConditionChange);
 
                 const removeButton = document.createElement('button');
@@ -391,12 +423,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     newInput.remove();
                     newSelect.remove();
                     removeButton.remove();
-                    button.style.display = '';
+
+                    // Re-check the count after removal
+                    const remainingMainInputs = Array.from(inputGroup.querySelectorAll('input[type="number"]')).filter(input =>
+                        !input.classList.contains('while-value-input')
+                    );
+                    if (remainingMainInputs.length < 2) {
+                        button.style.display = '';
+                    }
                 });
             }
 
-            const totalInputs = inputGroup.querySelectorAll('input[type="number"]').length;
-            if (totalInputs >= 2) {
+            // Re-count after adding
+            const totalMainInputs = Array.from(inputGroup.querySelectorAll('input[type="number"]')).filter(input =>
+                !input.classList.contains('while-value-input')
+            );
+            if (totalMainInputs.length >= 2) {
                 button.style.display = 'none';
             }
         });
@@ -1409,15 +1451,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 pendingOptimalBuild = optimalBuild;
                 showTalentConfirmationModal(pendingTalentSelection.dependencyIds, optimalBuild, hasNewRequirements);
             } else {
-                alert('Warning: No optimal build found within constraints. Talents will be added anyway.');
-                confirmTalentSelection();
+                alert('Warning: No optimal build found within constraints. Talents wont be added.');
+                //confirmTalentSelection();
             }
         } else if (!hasNewRequirements) {
             // No requirements at all - just add the talents
             confirmTalentSelection();
         } else {
-            alert('Warning: No optimal build found within constraints. Talents will be added anyway.');
-            confirmTalentSelection();
+            alert('Warning: No optimal build found within constraints. Talents wont be added.');
+            //confirmTalentSelection();
         }
     }
 
