@@ -1240,10 +1240,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const requirements = getTalentRequirements(talent);
 
+        // Check if this talent has conflicts with any selected talents
+        const conflictingTalents = [];
+        if (talent.exclusiveWith && talent.exclusiveWith.length > 0) {
+            talent.exclusiveWith.forEach(exclusiveName => {
+                if (!exclusiveName || exclusiveName === '') return;
+                const exclusiveTalent = findTalentByName(exclusiveName);
+                if (exclusiveTalent && selectedTalents.has(exclusiveTalent.id)) {
+                    conflictingTalents.push(exclusiveName);
+                }
+            });
+        }
+
+        const hasExclusiveConflict = conflictingTalents.length > 0;
+
+        // Add conflict class if there's an actual conflict
+        if (hasExclusiveConflict) {
+            card.classList.add('exclusive-conflict');
+        }
+
         // Get the "from" field if it exists
         let fromHTML = '';
         if (talent.reqs && talent.reqs.from) {
             fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
+        }
+
+        // Get the stats field if it exists and is not "N/A"
+        let statsHTML = '';
+        if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
+            statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
+        }
+
+        // Only show exclusive warning if there's an actual conflict
+        let exclusiveHTML = '';
+        if (hasExclusiveConflict) {
+            const exclusivesList = conflictingTalents.join(', ');
+            exclusiveHTML = `<div class="talent-exclusive">Conflicts with: ${exclusivesList}</div>`;
         }
 
         let reqsHTML = '';
@@ -1255,13 +1287,17 @@ document.addEventListener('DOMContentLoaded', () => {
             reqsHTML += '</div>';
         }
 
+        const nameClass = hasExclusiveConflict ? 'talent-name conflict' : 'talent-name';
+
         card.innerHTML = `
         <div class="talent-header">
-            <span class="talent-name">${talent.name}</span>
+            <span class="${nameClass}">${talent.name}</span>
             <span class="talent-rarity">${talent.rarity || 'Common'}</span>
         </div>
         <div class="talent-desc">${talent.desc || 'No description available'}</div>
         ${fromHTML}
+        ${statsHTML}
+        ${exclusiveHTML}
         ${reqsHTML}
     `;
 
@@ -1532,7 +1568,15 @@ document.addEventListener('DOMContentLoaded', () => {
         talentsList.innerHTML = '';
         talentsToAdd.forEach(talent => {
             const li = document.createElement('li');
-            li.textContent = talent.name;
+            const requirements = getTalentRequirements(talent);
+
+            if (requirements.length > 0) {
+                const reqText = requirements.map(r => `${r.stat}: ${r.value}`).join(', ');
+                li.innerHTML = `<strong>${talent.name}</strong><br><span style="font-size: 0.85em; color: var(--card-text-secondary);">${reqText}</span>`;
+            } else {
+                li.textContent = talent.name;
+            }
+
             talentsList.appendChild(li);
         });
 
