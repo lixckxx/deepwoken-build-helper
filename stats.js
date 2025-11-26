@@ -198,18 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (sparePointsElement) {
             sparePointsElement.textContent = sparePoints;
-
-            // Remove all color classes
-            sparePointsElement.classList.remove('negative', 'low', 'good');
-
-            // Add appropriate color class
-            if (sparePoints < 0) {
-                sparePointsElement.classList.add('negative');
-            } else if (sparePoints < 50) {
-                sparePointsElement.classList.add('low');
-            } else {
-                sparePointsElement.classList.add('good');
-            }
         }
     }
     function getCurrentMaxBuildStats() {
@@ -1344,7 +1332,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // If talent requires oath and toggle is off, filter it out
-            if (!showOathTalents && requiresOath(talent)) {
+            const isOathRelated = rarity === 'Oath' || requiresOath(talent);
+            if (!showOathTalents && isOathRelated) {
                 return false;
             }
 
