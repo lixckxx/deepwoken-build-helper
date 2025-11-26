@@ -125,44 +125,93 @@ document.addEventListener('DOMContentLoaded', () => {
         return stats;
     }
 
-   function calculateTotalPoints() {
-    let totalPoints = 0;
+    function calculateTotalPoints() {
+        let totalPoints = 0;
+        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
+        let attunementCount = 0;
 
-    document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {  
-        //Get Post-Shrine Value
-        const postInput = row.querySelector('.post-shrine');
-        const postValue = parseInt(postInput.value) || 0;
-        
-      
-        totalPoints += postValue;
-    });
+        // First pass: count how many attunements have points invested
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
 
-    return totalPoints;
-}
+            if (attunements.includes(statName) && postValue > 0) {
+                attunementCount++;
+            }
+        });
 
-function updateSparePoints() {
-    const totalPoints = calculateTotalPoints();
-    const sparePoints = MAX_TOTAL_POINTS - totalPoints;
+        // Second pass: calculate total points
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
 
-    console.log(`Total Points Used: ${totalPoints}, Leftover Points: ${sparePoints}`);
-    const sparePointsElement = document.getElementById('sparePointsValue');
+            if (attunements.includes(statName)) {
+                // Add all attunement points
+                totalPoints += postValue;
+            } else {
+                // Non-attunement stats count normally
+                totalPoints += postValue;
+            }
+        });
 
-    if (sparePointsElement) {
-        sparePointsElement.textContent = sparePoints;
+        // Apply the free point rule: first attunement costs 1 point, others get first point free
+        // So we add 1 for having any attunements, then subtract 1 for each attunement
+        if (attunementCount > 0) {
+            totalPoints = totalPoints + 1 - attunementCount;
+        }
 
-        // Remove all color classes
-        sparePointsElement.classList.remove('negative', 'low', 'good');
+        return totalPoints;
+    }
 
-        // Add appropriate color class
-        if (sparePoints < 0) {
-            sparePointsElement.classList.add('negative');
-        } else if (sparePoints < 50) {
-            sparePointsElement.classList.add('low');
-        } else {
-            sparePointsElement.classList.add('good');
+    function calculateTruePointCost(stats) {
+        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
+
+        let totalPoints = 0;
+        let attunementCount = 0;
+
+        for (const [statName, value] of Object.entries(stats)) {
+            const points = typeof value === 'object' ? value.currentPre : value;
+            if (points > 0) {
+                totalPoints += points;
+                if (attunements.includes(statName)) {
+                    attunementCount++;
+                }
+            }
+        }
+
+        // Apply attunement discount
+        if (attunementCount > 0) {
+            totalPoints = totalPoints + 1 - attunementCount;
+        }
+
+        return totalPoints;
+    }
+
+    function updateSparePoints() {
+        const totalPoints = calculateTotalPoints();
+        const sparePoints = MAX_TOTAL_POINTS - totalPoints;
+
+        console.log(`Total Points Used: ${totalPoints}, Leftover Points: ${sparePoints}`);
+        const sparePointsElement = document.getElementById('sparePointsValue');
+
+        if (sparePointsElement) {
+            sparePointsElement.textContent = sparePoints;
+
+            // Remove all color classes
+            sparePointsElement.classList.remove('negative', 'low', 'good');
+
+            // Add appropriate color class
+            if (sparePoints < 0) {
+                sparePointsElement.classList.add('negative');
+            } else if (sparePoints < 50) {
+                sparePointsElement.classList.add('low');
+            } else {
+                sparePointsElement.classList.add('good');
+            }
         }
     }
-}
     function getCurrentMaxBuildStats() {
         const stats = {};
         document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
@@ -187,12 +236,22 @@ function updateSparePoints() {
         // Calculate total invested and affected stats
         let totalInvested = 0;
         const affectedStats = [];
+        let attunementCount = 0;
 
         for (const [statName, value] of Object.entries(stats)) {
             if (value > 0) {
                 totalInvested += value;
                 affectedStats.push(statName);
+
+                if (attunements.includes(statName)) {
+                    attunementCount++;
+                }
             }
+        }
+
+        // Apply the free point rule for attunements
+        if (attunementCount > 0) {
+            totalInvested = totalInvested + 1 - attunementCount;
         }
 
         if (affectedStats.length === 0) {
@@ -209,7 +268,7 @@ function updateSparePoints() {
         }
 
         // Bottlenecking process
-        let bottleneckedDivideBy = affectedStats.filter(s => !attunements.includes(s)).length;
+        let bottleneckedDivideBy = affectedStats.length;
         const bottlenecked = [];
         let bottleneckedStats = false;
         let previousStats = { ...postShrine };
@@ -236,12 +295,10 @@ function updateSparePoints() {
                 }
             }
 
-            // Redistribute bottlenecked points ONLY to non-bottlenecked NON-ATTUNEMENT stats
+            // Redistribute bottlenecked points ONLY to non-bottlenecked stats
             if (bottleneckedDivideBy > 0 && bottleneckedPoints !== 0) {
                 for (const statName of affectedStats) {
-                    const isAttunement = attunements.includes(statName);
-
-                    if (!isAttunement && !bottlenecked.includes(statName)) {
+                    if (!bottlenecked.includes(statName)) {
                         postShrine[statName] -= bottleneckedPoints / bottleneckedDivideBy;
 
                         if (preshrineBuild[statName] - postShrine[statName] > BOTTLENECK_LIMIT) {
@@ -823,6 +880,7 @@ function updateSparePoints() {
             console.log('\nFinal Stats:');
             console.table(bestSolution.finalStats);
 
+
             console.log(`\nTotal Points Used: ${bestSolution.totalPreInvestment + bestSolution.totalPostInvestment}`);
             console.log(`Leftover Points: ${bestSolution.leftoverPoints}`);
         } else {
@@ -840,12 +898,22 @@ function updateSparePoints() {
         // Calculate total invested and affected stats
         let totalInvested = 0;
         const affectedStats = [];
+        let attunementCount = 0;
 
         for (const [statName, statData] of Object.entries(stats)) {
             if (statData.currentPre > 0) {
                 totalInvested += statData.currentPre;
                 affectedStats.push(statName);
+
+                if (attunements.includes(statName)) {
+                    attunementCount++;
+                }
             }
+        }
+
+        // Apply the free point rule for attunements
+        if (attunementCount > 0) {
+            totalInvested = totalInvested + 1 - attunementCount;
         }
 
         if (affectedStats.length === 0) {
@@ -863,7 +931,7 @@ function updateSparePoints() {
         }
 
         // Bottlenecking process
-        let bottleneckedDivideBy = affectedStats.filter(s => !attunements.includes(s)).length;
+        let bottleneckedDivideBy = affectedStats.length;
         const bottlenecked = [];
         let bottleneckedStats = false;
         let previousStats = { ...postShrine };
@@ -890,12 +958,10 @@ function updateSparePoints() {
                 }
             }
 
-            // Redistribute bottlenecked points ONLY to non-bottlenecked NON-ATTUNEMENT stats
+            // Redistribute bottlenecked points ONLY to non-bottlenecked stats
             if (bottleneckedDivideBy > 0 && bottleneckedPoints !== 0) {
                 for (const statName of affectedStats) {
-                    const isAttunement = attunements.includes(statName);
-
-                    if (!isAttunement && !bottlenecked.includes(statName)) {
+                    if (!bottlenecked.includes(statName)) {
                         postShrine[statName] -= bottleneckedPoints / bottleneckedDivideBy;
 
                         if (preshrineBuild[statName] - postShrine[statName] > BOTTLENECK_LIMIT) {
