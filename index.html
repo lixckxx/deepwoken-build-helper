@@ -25,6 +25,10 @@
                 <div class="power-info">
                     <p>Deepwoken Build Helper</p>
                     <p>By: Lix</p>
+                    <p class="spare-points-display">
+                        <span>Spare Points:</span>
+                        <span id="sparePointsValue">330</span>
+                    </p>
                 </div>
             </div>
 
@@ -562,6 +566,7 @@
             <div class="talents-panel">
                 <div class="panel-header">
                     <h3>Selected Talents</h3>
+                    
                     <div class="search-bar">
                         <input type="text" id="searchSelected" placeholder="Search selected..." />
                     </div>
@@ -598,6 +603,8 @@
                         <button class="filter-btn" data-filter="Bloodrend">Bloodrend</button>
                         <button class="filter-btn clear-filters">Clear</button>
                     </div>
+
+                    <button id="clearAllTalents" class="clear-all-btn">Clear All Talents</button>
                 </div>
 
 

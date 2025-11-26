@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dualGroup = input.closest('.dual-input-group');
             const preInput = dualGroup.querySelector('.pre-shrine');
             const postInput = dualGroup.querySelector('.post-shrine');
-            syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+            //syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
 
             // Re-render talents to update availability
             renderBothPanels();
@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dualGroup = input.closest('.dual-input-group');
                 const preInput = dualGroup.querySelector('.pre-shrine');
                 const postInput = dualGroup.querySelector('.post-shrine');
-                syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+                //syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
 
                 input.blur();
             }
@@ -125,6 +125,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return stats;
     }
 
+   function calculateTotalPoints() {
+    let totalPoints = 0;
+
+    document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {  
+        //Get Post-Shrine Value
+        const postInput = row.querySelector('.post-shrine');
+        const postValue = parseInt(postInput.value) || 0;
+        
+      
+        totalPoints += postValue;
+    });
+
+    return totalPoints;
+}
+
+function updateSparePoints() {
+    const totalPoints = calculateTotalPoints();
+    const sparePoints = MAX_TOTAL_POINTS - totalPoints;
+
+    console.log(`Total Points Used: ${totalPoints}, Leftover Points: ${sparePoints}`);
+    const sparePointsElement = document.getElementById('sparePointsValue');
+
+    if (sparePointsElement) {
+        sparePointsElement.textContent = sparePoints;
+
+        // Remove all color classes
+        sparePointsElement.classList.remove('negative', 'low', 'good');
+
+        // Add appropriate color class
+        if (sparePoints < 0) {
+            sparePointsElement.classList.add('negative');
+        } else if (sparePoints < 50) {
+            sparePointsElement.classList.add('low');
+        } else {
+            sparePointsElement.classList.add('good');
+        }
+    }
+}
     function getCurrentMaxBuildStats() {
         const stats = {};
         document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
@@ -513,7 +551,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     statRequirements[statName].whileConditions.push({
                         value: req.value,
                         whileStat: req.whileStat,
-                        whileValue: req.whileValue
+                        whileValue: req.whileValue,
+                        talentGroup: req.talentGroup,
+                        allRequirements: req.allRequirements
                     });
                 }
             }
@@ -522,8 +562,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate all possible combinations for 'any' AND 'while' conditions
         function generateCombinations(statReqs) {
             const statsWithAny = [];
-            const statsWithWhile = [];
             const baseConfig = {};
+            const whileGroups = {}; // Track which stats belong to the same talent group
 
             for (const [statName, data] of Object.entries(statReqs)) {
                 baseConfig[statName] = {
@@ -542,7 +582,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (data.whileConditions && data.whileConditions.length > 0) {
                     baseConfig[statName].whileConditions = data.whileConditions;
-                    statsWithWhile.push(statName);
+
+                    // Group while-conditions by talent
+                    data.whileConditions.forEach(cond => {
+                        if (cond.talentGroup) {
+                            if (!whileGroups[cond.talentGroup]) {
+                                whileGroups[cond.talentGroup] = [];
+                            }
+                            whileGroups[cond.talentGroup].push({
+                                stat: statName,
+                                value: cond.value,
+                                allRequirements: cond.allRequirements
+                            });
+                        }
+                    });
                 }
             }
 
@@ -571,54 +624,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Now handle 'while' conditions - generate pre/post variants
-                // For while conditions, both stats must be in the same phase (pre or post)
+                // For while conditions, ALL stats in the same talent group must be in the same phase
                 const whileVariants = [];
 
-                if (statsWithWhile.length > 0) {
-                    // For each while condition, try both pre and post
-                    const totalWhileCombinations = Math.pow(2, statsWithWhile.length);
+                if (Object.keys(whileGroups).length > 0) {
+                    // For each talent group, try both pre and post
+                    const groupKeys = Object.keys(whileGroups);
+                    const totalWhileCombinations = Math.pow(2, groupKeys.length);
 
                     for (let j = 0; j < totalWhileCombinations; j++) {
                         const whileConfig = JSON.parse(JSON.stringify(config));
 
-                        statsWithWhile.forEach((statName, index) => {
+                        groupKeys.forEach((groupKey, index) => {
                             const isPre = (j >> index) & 1;
+                            const group = whileGroups[groupKey];
 
-                            whileConfig[statName].whileConditions.forEach(whileCond => {
-                                if (isPre) {
-                                    // Both stats must be pre-shrine
-                                    whileConfig[statName].minPre = Math.max(whileConfig[statName].minPre, whileCond.value);
-                                    if (!whileConfig[whileCond.whileStat]) {
-                                        whileConfig[whileCond.whileStat] = {
-                                            isAttunement: attunementStats.includes(whileCond.whileStat),
-                                            minPre: 0,
-                                            minPost: 0,
-                                            anyRequirements: [],
-                                            whileConditions: []
-                                        };
-                                    }
-                                    whileConfig[whileCond.whileStat].minPre = Math.max(
-                                        whileConfig[whileCond.whileStat].minPre,
-                                        whileCond.whileValue
+                            // Apply the SAME phase choice to ALL stats in this talent group
+                            if (isPre) {
+                                // All requirements in this group go to pre-shrine
+                                group.forEach(item => {
+                                    whileConfig[item.stat].minPre = Math.max(
+                                        whileConfig[item.stat].minPre,
+                                        item.value
                                     );
-                                } else {
-                                    // Both stats must be post-shrine
-                                    whileConfig[statName].minPost = Math.max(whileConfig[statName].minPost, whileCond.value);
-                                    if (!whileConfig[whileCond.whileStat]) {
-                                        whileConfig[whileCond.whileStat] = {
-                                            isAttunement: attunementStats.includes(whileCond.whileStat),
-                                            minPre: 0,
-                                            minPost: 0,
-                                            anyRequirements: [],
-                                            whileConditions: []
-                                        };
-                                    }
-                                    whileConfig[whileCond.whileStat].minPost = Math.max(
-                                        whileConfig[whileCond.whileStat].minPost,
-                                        whileCond.whileValue
+                                });
+                            } else {
+                                // All requirements in this group go to post-shrine
+                                group.forEach(item => {
+                                    whileConfig[item.stat].minPost = Math.max(
+                                        whileConfig[item.stat].minPost,
+                                        item.value
                                     );
-                                }
-                            });
+                                });
+                            }
                         });
 
                         whileVariants.push(whileConfig);
@@ -750,9 +788,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalPoints = totalPostInvestment + totalPreInvestment;
             if (!isValid || totalPoints > MAX_TOTAL_POINTS) continue;
 
-            // Calculate score (prefer more leftover points)
+            // IMPROVED SCORING: Heavily favor solutions with more leftover points
+            // Also reward efficient use of shrine averaging
             const leftoverPoints = MAX_TOTAL_POINTS - totalPoints;
-            const score = leftoverPoints;
+            const shrineEfficiency = statsToInclude.size > 1 ? (statsToInclude.size * 100) : 0;
+            const score = (leftoverPoints * 1000) + shrineEfficiency;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -778,14 +818,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             console.log('\nPost-Shrine Values (after averaging):');
             console.table(bestSolution.postShrine);
-            console.log(bestSolution.shrineLeftover)
+            console.log('Shrine Leftover:', bestSolution.shrineLeftover);
 
             console.log('\nFinal Stats:');
             console.table(bestSolution.finalStats);
 
             console.log(`\nTotal Points Used: ${bestSolution.totalPreInvestment + bestSolution.totalPostInvestment}`);
             console.log(`Leftover Points: ${bestSolution.leftoverPoints}`);
-            console.log(`Shrine Leftover: ${bestSolution.shrineLeftover}`);
         } else {
             console.log('No valid solution found within constraints.');
         }
@@ -1105,6 +1144,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    document.getElementById('clearAllTalents')?.addEventListener('click', () => {
+        if (selectedTalents.size === 0) return;
+
+        const confirm = window.confirm(
+            `Are you sure you want to remove all ${selectedTalents.size} selected talents and clear your build?`
+        );
+
+        if (confirm) {
+            selectedTalents.clear();
+            recalculateBuildForRemainingTalents();
+            renderBothPanels();
+        }
+    });
+
     function getTalentRequirements(talent) {
         const reqs = [];
 
@@ -1417,88 +1470,96 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Merge current build with new talent requirements
-        const currentBuild = collectManualBuildStats();
-        const mergedRequirements = {};
+        // ==========================================
+        // FIXED: Accumulate requirements from ALL selected talents + new talents
+        // ==========================================
 
-        // Add current build as requirements
-        for (const [statName, value] of Object.entries(currentBuild.pre)) {
-            if (!mergedRequirements[statName]) {
-                mergedRequirements[statName] = [];
-            }
-            mergedRequirements[statName].push({ value: value, condition: 'pre' });
-        }
+        // Get ALL currently selected talents
+        const allSelectedTalents = Array.from(selectedTalents)
+            .map(id => allTalents.find(t => t.id === id))
+            .filter(t => t);
 
-        for (const [statName, value] of Object.entries(currentBuild.post)) {
-            if (!mergedRequirements[statName]) {
-                mergedRequirements[statName] = [];
-            }
-            mergedRequirements[statName].push({ value: value, condition: 'post' });
-        }
+        // Combine with new talents we're about to add
+        const allTalentsToConsider = [...allSelectedTalents, ...newTalents];
 
-        // Add new talent requirements as 'while' conditions
-        // Group requirements by talent for proper 'while' condition handling
-        newTalents.forEach(talent => {
+        const combinedRequirements = {};
+
+        // Process ALL talents (existing + new)
+        allTalentsToConsider.forEach((talent, talentIndex) => {
             const requirements = getTalentRequirements(talent);
 
             if (requirements.length === 0) return;
 
-            // If talent has multiple requirements, they should all be active simultaneously
-            // So we create 'while' conditions between them
-            for (let i = 0; i < requirements.length; i++) {
-                const req = requirements[i];
-
-                if (!mergedRequirements[req.stat]) {
-                    mergedRequirements[req.stat] = [];
+            requirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
                 }
 
-                // For each requirement, create 'while' conditions with all other requirements
-                // from the same talent
-                if (requirements.length > 1) {
-                    // This talent has multiple requirements - they need to be met simultaneously
-                    for (let j = 0; j < requirements.length; j++) {
-                        if (i !== j) {
-                            const otherReq = requirements[j];
-                            mergedRequirements[req.stat].push({
-                                value: req.value,
-                                condition: 'while',
-                                whileStat: otherReq.stat,
-                                whileValue: otherReq.value
-                            });
-                        }
-                    }
-                } else {
-                    // Single requirement - just add as 'any'
-                    mergedRequirements[req.stat].push({
+                if (requirements.length === 1) {
+                    // Single requirement can be pre or post
+                    combinedRequirements[req.stat].push({
                         value: req.value,
                         condition: 'any'
                     });
+                } else {
+                    // Multiple requirements from same talent must be together (while condition)
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'while',
+                        talentGroup: `talent_${talent.id}`,  // Group identifier
+                        allRequirements: requirements  // Store all requirements
+                    });
                 }
-            }
+            });
         });
+
+        const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
+
+        // ==========================================
+        // DEBUGGING: Show all combined requirements
+        // ==========================================
+        console.log('=== TALENT SELECTION DEBUG ===');
+        console.log('New talents being added:', newTalents.map(t => t.name));
+        console.log('Already selected talents:', allSelectedTalents.map(t => t.name));
+        console.log('\n--- Combined Requirements ---');
+
+        for (const [statName, requirements] of Object.entries(deduplicatedRequirements)) {
+            console.log(`\n[${statName}]:`);
+            requirements.forEach((req, index) => {
+                if (req.condition === 'any') {
+                    console.log(`  ${index + 1}. Value: ${req.value}, Condition: ANY`);
+                } else if (req.condition === 'while') {
+                    const otherStats = req.allRequirements
+                        .filter(r => r.stat !== statName)
+                        .map(r => `${r.stat}: ${r.value}`)
+                        .join(', ');
+                    console.log(`  ${index + 1}. Value: ${req.value}, Condition: WHILE (${otherStats}), Group: ${req.talentGroup}`);
+                } else {
+                    console.log(`  ${index + 1}. Value: ${req.value}, Condition: ${req.condition}`);
+                }
+            });
+        }
+        console.log('\n==============================\n');
 
         const hasNewRequirements = newTalents.some(talent => getTalentRequirements(talent).length > 0);
 
         // Only calculate if there are actual requirements
-        if (Object.keys(mergedRequirements).length > 0) {
-            const optimalBuild = calculateOptimalOrder(mergedRequirements);
+        if (Object.keys(deduplicatedRequirements).length > 0) {
+            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
 
             if (optimalBuild) {
                 pendingOptimalBuild = optimalBuild;
                 showTalentConfirmationModal(pendingTalentSelection.dependencyIds, optimalBuild, hasNewRequirements);
             } else {
-                alert('Warning: No optimal build found within constraints. Talents wont be added.');
-                //confirmTalentSelection();
+                alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
             }
         } else if (!hasNewRequirements) {
             // No requirements at all - just add the talents
             confirmTalentSelection();
         } else {
-            alert('Warning: No optimal build found within constraints. Talents wont be added.');
-            //confirmTalentSelection();
+            alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
         }
     }
-
     // Add function to collect dependencies
     function collectDependencies(talentId, visited = new Set()) {
         if (visited.has(talentId)) {
@@ -1519,6 +1580,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 collectDependencies(requiredTalent.id, visited);
             }
         });
+    }
+
+    // Add this function after collectDependencies
+    function deduplicateRequirements(requirements) {
+        const deduplicated = {};
+
+        for (const [statName, reqs] of Object.entries(requirements)) {
+            deduplicated[statName] = [];
+
+            // Group by condition type
+            const anyReqs = reqs.filter(r => r.condition === 'any');
+            const whileReqs = reqs.filter(r => r.condition === 'while');
+
+            // For ANY requirements, only keep the maximum value
+            if (anyReqs.length > 0) {
+                const maxAny = Math.max(...anyReqs.map(r => r.value));
+                deduplicated[statName].push({
+                    value: maxAny,
+                    condition: 'any'
+                });
+            }
+
+            // For WHILE requirements, deduplicate by talent group
+            const whileGroups = {};
+            whileReqs.forEach(req => {
+                const group = req.talentGroup;
+                if (!whileGroups[group] || whileGroups[group].value < req.value) {
+                    whileGroups[group] = req;
+                }
+            });
+
+            deduplicated[statName].push(...Object.values(whileGroups));
+        }
+
+        return deduplicated;
     }
 
     // Add function to calculate optimal build for talents
@@ -1753,11 +1849,122 @@ document.addEventListener('DOMContentLoaded', () => {
 
             syncToOptimizer(statName, preValue, postValue);
         });
+
+        updateSparePoints();
     }
 
     function unselectTalent(talentId) {
+        // Remove the talent
         selectedTalents.delete(talentId);
+
+        // Check if any remaining talents depend on this one
+        const dependentTalents = [];
+        for (const selectedId of selectedTalents) {
+            const talent = allTalents.find(t => t.id === selectedId);
+            if (!talent) continue;
+
+            const requiredNames = getRequiredTalentNames(talent);
+            const removedTalent = allTalents.find(t => t.id === talentId);
+
+            if (removedTalent && requiredNames.includes(removedTalent.name)) {
+                dependentTalents.push(talent.name);
+            }
+        }
+
+        // If there are dependent talents, warn the user
+        if (dependentTalents.length > 0) {
+            const confirm = window.confirm(
+                `Warning: The following talents depend on "${allTalents.find(t => t.id === talentId)?.name}":\n\n` +
+                dependentTalents.join('\n') +
+                `\n\nRemoving this talent may make your build invalid. Continue?`
+            );
+
+            if (!confirm) {
+                // Re-add the talent if user cancels
+                selectedTalents.add(talentId);
+                renderBothPanels();
+                return;
+            }
+        }
+
+        // Recalculate build with remaining talents
+        recalculateBuildForRemainingTalents();
+
+        // Re-render both panels
         renderBothPanels();
+    }
+
+    // Add this new function to recalculate the build
+    function recalculateBuildForRemainingTalents() {
+        // If no talents selected, clear the build
+        if (selectedTalents.size === 0) {
+            document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                const preInput = row.querySelector('.pre-shrine');
+                const postInput = row.querySelector('.post-shrine');
+                preInput.value = 0;
+                postInput.value = 0;
+            });
+            updateSparePoints();
+            return;
+        }
+
+        // Get all remaining selected talents
+        const remainingTalents = Array.from(selectedTalents)
+            .map(id => allTalents.find(t => t.id === id))
+            .filter(t => t);
+
+        // Collect requirements from remaining talents
+        const combinedRequirements = {};
+
+        remainingTalents.forEach(talent => {
+            const requirements = getTalentRequirements(talent);
+            if (requirements.length === 0) return;
+
+            requirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+
+                if (requirements.length === 1) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'any'
+                    });
+                } else {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'while',
+                        talentGroup: `talent_${talent.id}`,
+                        allRequirements: requirements
+                    });
+                }
+            });
+        });
+
+        // Deduplicate requirements
+        const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
+
+        // Calculate optimal build for remaining talents
+        if (Object.keys(deduplicatedRequirements).length > 0) {
+            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+            if (optimalBuild) {
+                // Apply the new optimal build
+                applyOptimalBuildToStats(optimalBuild);
+                console.log('Build recalculated for remaining talents');
+            } else {
+                console.warn('Could not find optimal build for remaining talents');
+            }
+        } else {
+            // No requirements, clear the build
+            document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                const preInput = row.querySelector('.pre-shrine');
+                const postInput = row.querySelector('.post-shrine');
+                preInput.value = 0;
+                postInput.value = 0;
+            });
+            updateSparePoints();
+        }
     }
 
     function matchesFilters(talent, activeFilters, currentStats) {

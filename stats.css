@@ -133,15 +133,46 @@ input[type="number"] {
     gap: 0;
 }
 
+
+
 .power-card p {
     margin: 0;
     font-weight: bold;
+}
+
+.power-card p.spare-points-display {
+    font-weight: normal; 
 }
 
 .power-card p:nth-child(2) {
     color: var(--card-text-secondary);
     font-weight: normal;
     font-size: 0.9em;
+}
+
+/* Add after the existing .power-card styles */
+.spare-points-display {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--splitter-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--card-text-primary) !important;
+}
+
+
+/* Color coding for spare points */
+#sparePointsValue.negative {
+    color: #dc143c !important;
+}
+
+#sparePointsValue.low {
+    color: #ff8c00 !important;
+}
+
+#sparePointsValue.good {
+    color: #006400 !important;
 }
 
 /* --- Stat Row Base Styles --- */
@@ -1068,4 +1099,30 @@ input[type="number"] {
     background-color: rgba(255, 169, 154, 0.2);
     border-left: 3px solid #dc143c;
     color: #dc143c;
+}
+
+.clear-all-btn {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+    padding: 8px 16px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    font-size: 0.9em;
+    font-weight: bold;
+    width: 100%;
+    margin-top: 12px;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.clear-all-btn:hover {
+    background-color: var(--button-hover);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.clear-all-btn:active {
+    background-color: var(--button-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transform: translateY(1px);
 }
