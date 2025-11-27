@@ -17,18 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Global Constant for the point limit
+    // CONSTANTS
     const MAX_TOTAL_POINTS = 330;
+    const MAX_STAT_VALUE = 100;
+    const BOTTLENECK_LIMIT = 25;
 
-    // ==========================================
-    // STATS TAB (Manual Build & Shrine)
-    // ==========================================
-
-    const shrineButton = document.getElementById('shrineButton');
     const shrineResultsModal = document.getElementById('shrineResultsModal');
-    const closeShrineModal = document.getElementById('closeShrineModal');
 
-    // Function to sync stats to Point Optimizer
     function syncToOptimizer(statName, preValue, postValue) {
         // Find the corresponding stat row in the optimizer tab
         const optimizerRow = document.querySelector(`#optimizer-tab .stat-row[data-stat="${statName}"]`);
@@ -55,13 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let value = parseInt(input.value) || 0;
             value = Math.max(0, Math.min(100, value));
             input.value = value;
-            // updateTotalPoints();
 
             // Sync to optimizer
             const dualGroup = input.closest('.dual-input-group');
             const preInput = dualGroup.querySelector('.pre-shrine');
             const postInput = dualGroup.querySelector('.post-shrine');
-            //syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+            syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+
+            // Update spare points 
+            updateSparePoints();
 
             // Re-render talents to update availability
             renderBothPanels();
@@ -72,13 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 let value = parseInt(input.value) || 0;
                 value = Math.max(0, Math.min(100, value));
                 input.value = value;
-                // updateTotalPoints();
 
                 // Sync to optimizer
                 const dualGroup = input.closest('.dual-input-group');
                 const preInput = dualGroup.querySelector('.pre-shrine');
                 const postInput = dualGroup.querySelector('.post-shrine');
-                //syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+                syncToOptimizer(statName, parseInt(preInput.value) || 0, parseInt(postInput.value) || 0);
+
+                // Update spare points
+                updateSparePoints();
 
                 input.blur();
             }
@@ -95,13 +94,35 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // input.addEventListener('input', updateTotalPoints);
+        // Add input event for live updates
+        input.addEventListener('input', () => {
+            updateSparePoints();
+        });
     };
 
     // Apply validation to all simple inputs in stats tab
     document.querySelectorAll('#stats-tab .simple-input').forEach(input => {
         setupSimpleInputValidation(input);
     });
+
+    function calculateBodyAndMind(stats) {
+        const bodyStats = ['Strength', 'Fortitude', 'Agility'];
+        const mindStats = ['Intelligence', 'Willpower', 'Charisma'];
+
+        const body = Math.max(
+            stats['Strength'] || 0,
+            stats['Fortitude'] || 0,
+            stats['Agility'] || 0
+        );
+
+        const mind = Math.max(
+            stats['Intelligence'] || 0,
+            stats['Willpower'] || 0,
+            stats['Charisma'] || 0
+        );
+
+        return { Body: body, Mind: mind };
+    }
 
     function collectManualBuildStats() {
         const stats = { pre: {}, post: {} };
@@ -165,30 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return totalPoints;
     }
 
-    function calculateTruePointCost(stats) {
-        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
-
-        let totalPoints = 0;
-        let attunementCount = 0;
-
-        for (const [statName, value] of Object.entries(stats)) {
-            const points = typeof value === 'object' ? value.currentPre : value;
-            if (points > 0) {
-                totalPoints += points;
-                if (attunements.includes(statName)) {
-                    attunementCount++;
-                }
-            }
-        }
-
-        // Apply attunement discount
-        if (attunementCount > 0) {
-            totalPoints = totalPoints + 1 - attunementCount;
-        }
-
-        return totalPoints;
-    }
-
     function updateSparePoints() {
         const totalPoints = calculateTotalPoints();
         const sparePoints = MAX_TOTAL_POINTS - totalPoints;
@@ -216,120 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return stats;
     }
 
-    function simulateShrineAveraging(stats) {
-        const BOTTLENECK_LIMIT = 25;
-        const MAX_STAT = 100;
-        const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
 
-        // Calculate total invested and affected stats
-        let totalInvested = 0;
-        const affectedStats = [];
-        let attunementCount = 0;
-
-        for (const [statName, value] of Object.entries(stats)) {
-            if (value > 0) {
-                totalInvested += value;
-                affectedStats.push(statName);
-
-                if (attunements.includes(statName)) {
-                    attunementCount++;
-                }
-            }
-        }
-
-        // Apply the free point rule for attunements
-        if (attunementCount > 0) {
-            totalInvested = totalInvested + 1 - attunementCount;
-        }
-
-        if (affectedStats.length === 0) {
-            return { totalInvested: 0, postShrine: {}, leftoverPoints: 0 };
-        }
-
-        const pointsStart = totalInvested;
-        const preshrineBuild = { ...stats };
-        const postShrine = {};
-
-        // Initialize with average
-        for (const statName of affectedStats) {
-            postShrine[statName] = pointsStart / affectedStats.length;
-        }
-
-        // Bottlenecking process
-        let bottleneckedDivideBy = affectedStats.length;
-        const bottlenecked = [];
-        let bottleneckedStats = false;
-        let previousStats = { ...postShrine };
-
-        do {
-            let bottleneckedPoints = 0;
-            bottleneckedStats = false;
-
-            // Check for bottlenecking in non-attunement stats only
-            for (const statName of affectedStats) {
-                const isAttunement = attunements.includes(statName);
-
-                if (!isAttunement && !bottlenecked.includes(statName)) {
-                    const prevStat = previousStats[statName];
-                    const shrineStat = preshrineBuild[statName];
-                    const currentStat = postShrine[statName];
-
-                    if (shrineStat - currentStat > BOTTLENECK_LIMIT) {
-                        postShrine[statName] = shrineStat - BOTTLENECK_LIMIT;
-                        bottleneckedPoints += postShrine[statName] - prevStat;
-                        bottlenecked.push(statName);
-                        bottleneckedDivideBy--;
-                    }
-                }
-            }
-
-            // Redistribute bottlenecked points ONLY to non-bottlenecked stats
-            if (bottleneckedDivideBy > 0 && bottleneckedPoints !== 0) {
-                for (const statName of affectedStats) {
-                    if (!bottlenecked.includes(statName)) {
-                        postShrine[statName] -= bottleneckedPoints / bottleneckedDivideBy;
-
-                        if (preshrineBuild[statName] - postShrine[statName] > BOTTLENECK_LIMIT) {
-                            bottleneckedStats = true;
-                        }
-                    }
-                }
-            }
-
-            previousStats = { ...postShrine };
-        } while (bottleneckedStats);
-
-        // Floor all stats
-        for (const statName in postShrine) {
-            postShrine[statName] = Math.floor(postShrine[statName]);
-        }
-
-        // Calculate spare points
-        let sparePoints = pointsStart - Object.values(postShrine).reduce((a, b) => a + b, 0);
-
-        // Distribute spare points (repeatedly, 1 point at a time)
-        while (sparePoints > 0) {
-            let changed = false;
-
-            for (const statName of affectedStats) {
-                if (sparePoints <= 0) break;
-                if (bottlenecked.includes(statName)) continue;
-                if (postShrine[statName] >= MAX_STAT) continue;
-
-                postShrine[statName] += 1;
-                sparePoints -= 1;
-                changed = true;
-            }
-
-            if (!changed) break;
-        }
-
-        return {
-            totalInvested: pointsStart,
-            postShrine,
-            leftoverPoints: sparePoints
-        };
-    }
 
 
 
@@ -340,11 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const calculateButton = document.getElementById('calculateButton');
     const addButtons = document.querySelectorAll('#optimizer-tab .add-input-btn');
 
-    const handleInputValidation = (input) => {
-        let value = parseInt(input.value) || 0;
-        value = Math.max(0, Math.min(100, value));
-        input.value = value;
-    };
 
     const setupInputValidation = (input) => {
         input.addEventListener('blur', () => {
@@ -563,18 +442,108 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateOptimalOrder(desiredStats) {
-        const MAX_TOTAL_POINTS = 330;
-        const MAX_STAT_VALUE = 100;
-        const BOTTLENECK_LIMIT = 25;
-
-        // Identify attunement stats
         const attunementStats = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
 
-        // Parse requirements for each stat
+        const derivedStatMapping = {
+            'Body': ['Strength', 'Fortitude', 'Agility'],
+            'Mind': ['Intelligence', 'Willpower', 'Charisma']
+        };
+
         const statRequirements = {};
+
+        // Initialize the choices array if it doesn't exist
+        if (!window.pendingDerivedStatChoices) {
+            window.pendingDerivedStatChoices = [];
+        } else {
+            // Clear it for this calculation
+            window.pendingDerivedStatChoices = [];
+        }
+
+        // Track if we need user input
+        let needsUserInput = false;
+
         for (const [statName, requirements] of Object.entries(desiredStats)) {
             if (requirements.length === 0) continue;
 
+            // Handle derived stats (Body/Mind) - but this won't trigger for pre-resolved stats
+            if (derivedStatMapping[statName]) {
+                const componentStats = derivedStatMapping[statName];
+
+                for (const req of requirements) {
+                    let chosenStat;
+
+                    // Check if user has already made a selection
+                    if (window.selectedDerivedStats && window.selectedDerivedStats[statName]) {
+                        chosenStat = window.selectedDerivedStats[statName];
+                        console.log(`Using user-selected stat for ${statName}: ${chosenStat}`);
+                    } else {
+                        // Find the cheapest option (highest current value)
+                        const currentBuild = getCurrentMaxBuildStats();
+                        let bestStat = componentStats[0];
+                        let bestCurrentValue = currentBuild[bestStat] || 0;
+
+                        for (const compStat of componentStats) {
+                            const currentValue = currentBuild[compStat] || 0;
+                            if (currentValue > bestCurrentValue) {
+                                bestCurrentValue = currentValue;
+                                bestStat = compStat;
+                            }
+                        }
+
+                        // If all are 0, need user input
+                        if (bestCurrentValue === 0) {
+                            console.log(`Need user input for ${statName}`);
+
+                            // Only add if not already in choices
+                            const alreadyHasChoice = window.pendingDerivedStatChoices.some(
+                                c => c.derivedStat === statName && c.value === req.value
+                            );
+
+                            if (!alreadyHasChoice) {
+                                window.pendingDerivedStatChoices.push({
+                                    derivedStat: statName,
+                                    value: req.value,
+                                    condition: req.condition,
+                                    options: componentStats
+                                });
+                            }
+
+                            needsUserInput = true;
+                            chosenStat = componentStats[0]; // Temporary default
+                        } else {
+                            chosenStat = bestStat;
+                            console.log(`Auto-selected ${chosenStat} for ${statName} (current value: ${bestCurrentValue})`);
+                        }
+                    }
+
+                    // Add requirement for chosen stat
+                    if (!statRequirements[chosenStat]) {
+                        statRequirements[chosenStat] = {
+                            isAttunement: false,
+                            requirements: [],
+                            minPre: 0,
+                            minPost: 0,
+                            hasAny: false,
+                            whileConditions: []
+                        };
+                    }
+
+                    // Transfer requirement
+                    if (req.condition === 'any') {
+                        statRequirements[chosenStat].hasAny = true;
+                        statRequirements[chosenStat].requirements.push(req);
+                    } else if (req.condition === 'pre') {
+                        statRequirements[chosenStat].minPre = Math.max(statRequirements[chosenStat].minPre, req.value);
+                    } else if (req.condition === 'post') {
+                        statRequirements[chosenStat].minPost = Math.max(statRequirements[chosenStat].minPost, req.value);
+                    } else if (req.condition === 'while') {
+                        statRequirements[chosenStat].whileConditions.push(req);
+                    }
+                }
+                continue;
+            }
+
+            // Original handling for non-derived stats
             statRequirements[statName] = {
                 isAttunement: attunementStats.includes(statName),
                 requirements: requirements,
@@ -584,7 +553,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 whileConditions: []
             };
 
-            // Determine minimum pre/post requirements
             for (const req of requirements) {
                 if (req.condition === 'pre') {
                     statRequirements[statName].minPre = Math.max(statRequirements[statName].minPre, req.value);
@@ -593,18 +561,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (req.condition === 'any') {
                     statRequirements[statName].hasAny = true;
                 } else if (req.condition === 'while') {
-                    statRequirements[statName].whileConditions.push({
-                        value: req.value,
-                        whileStat: req.whileStat,
-                        whileValue: req.whileValue,
-                        talentGroup: req.talentGroup,
-                        allRequirements: req.allRequirements
-                    });
+                    statRequirements[statName].whileConditions.push(req);
                 }
             }
         }
 
-        // Generate all possible combinations for 'any' AND 'while' conditions
+        // If we need user input and haven't gotten it yet, return null
+        if (needsUserInput && (!window.selectedDerivedStats || Object.keys(window.selectedDerivedStats).length === 0)) {
+            console.log('Returning null - need user input for:', window.pendingDerivedStatChoices);
+            return null;
+        }
+
+        // Continue with the rest of the function (existing combination generation code)
         function generateCombinations(statReqs) {
             const statsWithAny = [];
             const baseConfig = {};
@@ -669,11 +637,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Now handle 'while' conditions - generate pre/post variants
-                // For while conditions, ALL stats in the same talent group must be in the same phase
                 const whileVariants = [];
 
                 if (Object.keys(whileGroups).length > 0) {
-                    // For each talent group, try both pre and post
                     const groupKeys = Object.keys(whileGroups);
                     const totalWhileCombinations = Math.pow(2, groupKeys.length);
 
@@ -684,9 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const isPre = (j >> index) & 1;
                             const group = whileGroups[groupKey];
 
-                            // Apply the SAME phase choice to ALL stats in this talent group
                             if (isPre) {
-                                // All requirements in this group go to pre-shrine
                                 group.forEach(item => {
                                     whileConfig[item.stat].minPre = Math.max(
                                         whileConfig[item.stat].minPre,
@@ -694,7 +658,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                     );
                                 });
                             } else {
-                                // All requirements in this group go to post-shrine
                                 group.forEach(item => {
                                     whileConfig[item.stat].minPost = Math.max(
                                         whileConfig[item.stat].minPost,
@@ -722,34 +685,98 @@ document.addEventListener('DOMContentLoaded', () => {
         const allCombinationsWithShrineOptions = [];
         for (const config of allCombinations) {
             const postOnlyStats = [];
+            const symmetricWhileStats = []; // NEW: Track stats that are symmetric in while conditions
+
+            // NEW: Detect symmetric while conditions (stats that must grow together)
+            const whileGroups = new Map(); // Track which stats are in which while groups
+
             for (const [statName, data] of Object.entries(config)) {
+                // Track while condition groups
+                if (data.whileConditions && data.whileConditions.length > 0) {
+                    data.whileConditions.forEach(cond => {
+                        if (cond.talentGroup) {
+                            if (!whileGroups.has(cond.talentGroup)) {
+                                whileGroups.set(cond.talentGroup, []);
+                            }
+                            whileGroups.get(cond.talentGroup).push(statName);
+                        }
+                    });
+                }
+
                 if (data.minPost > 0 && data.minPre === 0) {
                     postOnlyStats.push(statName);
                 }
             }
 
+            // NEW: Check if post-only stats are part of symmetric while conditions
+            for (const postStat of postOnlyStats) {
+                let isSymmetric = false;
+
+                // Check each while group this stat is part of
+                whileGroups.forEach((groupStats, groupKey) => {
+                    if (groupStats.includes(postStat)) {
+                        // Check if ALL stats in this group are post-only with same requirements
+                        const allPostOnly = groupStats.every(s => postOnlyStats.includes(s));
+
+                        if (allPostOnly) {
+                            // Check if they all have the same value requirements
+                            const values = groupStats.map(s => config[s].minPost);
+                            const allSameValue = values.every(v => v === values[0]);
+
+                            if (allSameValue) {
+                                isSymmetric = true;
+                                console.log(`Detected symmetric while group: ${groupStats.join(', ')} (value: ${values[0]})`);
+                            }
+                        }
+                    }
+                });
+
+                if (isSymmetric) {
+                    symmetricWhileStats.push(postStat);
+                }
+            }
+
             // Generate all combinations of including/excluding post-only stats from shrine
-            const shrineOptionCount = Math.pow(2, postOnlyStats.length);
+            // BUT exclude symmetric while stats from shrine options
+            const shrineablePostStats = postOnlyStats.filter(s => !symmetricWhileStats.includes(s));
+
+            console.log('Post-only stats:', postOnlyStats);
+            console.log('Symmetric while stats (not shrineable):', symmetricWhileStats);
+            console.log('Shrineable post stats:', shrineablePostStats);
+
+            const shrineOptionCount = Math.pow(2, shrineablePostStats.length);
             for (let i = 0; i < shrineOptionCount; i++) {
                 const variant = {
                     config: config,
                     shrineInclusions: {}
                 };
 
-                for (let j = 0; j < postOnlyStats.length; j++) {
+                for (let j = 0; j < shrineablePostStats.length; j++) {
                     const includeInShrine = (i >> j) & 1;
-                    variant.shrineInclusions[postOnlyStats[j]] = includeInShrine === 1;
+                    variant.shrineInclusions[shrineablePostStats[j]] = includeInShrine === 1;
+                }
+
+                // Explicitly mark symmetric stats as NOT included in shrine
+                for (const symmetricStat of symmetricWhileStats) {
+                    variant.shrineInclusions[symmetricStat] = false;
                 }
 
                 allCombinationsWithShrineOptions.push(variant);
             }
 
-            // If no post-only stats, just add the config as-is
-            if (postOnlyStats.length === 0) {
-                allCombinationsWithShrineOptions.push({
+            // If no shrineable post-only stats, just add the config as-is
+            if (shrineablePostStats.length === 0) {
+                const variant = {
                     config: config,
                     shrineInclusions: {}
-                });
+                };
+
+                // Explicitly mark symmetric stats as NOT included in shrine
+                for (const symmetricStat of symmetricWhileStats) {
+                    variant.shrineInclusions[symmetricStat] = false;
+                }
+
+                allCombinationsWithShrineOptions.push(variant);
             }
         }
 
@@ -796,7 +823,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (totalPreInvestment > MAX_TOTAL_POINTS) continue;
 
             // Simulate shrine averaging
-            const shrineResult = simulateShrineAveragingOptimizer(preShrine);
+            const shrineResult = simulateShrineAveraging(preShrine);
 
             // Check if post-shrine values meet requirements
             let isValid = true;
@@ -834,7 +861,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isValid || totalPoints > MAX_TOTAL_POINTS) continue;
 
             // IMPROVED SCORING: Heavily favor solutions with more leftover points
-            // Also reward efficient use of shrine averaging
             const leftoverPoints = MAX_TOTAL_POINTS - totalPoints;
             const shrineEfficiency = statsToInclude.size > 1 ? (statsToInclude.size * 100) : 0;
             const score = (leftoverPoints * 1000) + shrineEfficiency;
@@ -878,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return bestSolution;
     }
 
-    function simulateShrineAveragingOptimizer(stats) {
+    function simulateShrineAveraging(stats) {
         const BOTTLENECK_LIMIT = 25;
         const MAX_STAT = 100;
         const attunements = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
@@ -1219,7 +1245,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Base stats
             if (talent.reqs.base) {
                 for (const [stat, value] of Object.entries(talent.reqs.base)) {
-                    if (value > 0 && stat !== 'Body' && stat !== 'Mind') {
+                    if (value > 0) {
+                        // Keep Body and Mind as separate requirements
                         reqs.push({ stat, value });
                     }
                 }
@@ -1247,18 +1274,150 @@ document.addEventListener('DOMContentLoaded', () => {
         return reqs;
     }
 
+    function resolveBodyMindRequirements(talent) {
+        const derivedStatMapping = {
+            'Body': ['Strength', 'Fortitude', 'Agility'],
+            'Mind': ['Intelligence', 'Willpower', 'Charisma']
+        };
+
+        const rawRequirements = getTalentRequirements(talent);
+        const resolvedRequirements = [];
+
+        for (const req of rawRequirements) {
+            // Check if this is a derived stat
+            if (derivedStatMapping[req.stat]) {
+                const componentStats = derivedStatMapping[req.stat];
+                const currentBuild = getCurrentMaxBuildStats();
+
+                // Find which component stat to use
+                let chosenStat = componentStats[0];
+                let bestCurrentValue = currentBuild[chosenStat] || 0;
+
+                // Use the stat with the highest current value
+                for (const compStat of componentStats) {
+                    const currentValue = currentBuild[compStat] || 0;
+                    if (currentValue > bestCurrentValue) {
+                        bestCurrentValue = currentValue;
+                        chosenStat = compStat;
+                    }
+                }
+
+                // Check if user has made a selection for this derived stat
+                if (window.selectedDerivedStats && window.selectedDerivedStats[req.stat]) {
+                    chosenStat = window.selectedDerivedStats[req.stat];
+                }
+
+                // Add resolved requirement
+                resolvedRequirements.push({
+                    stat: chosenStat,
+                    value: req.value
+                });
+            } else {
+                // Not a derived stat, keep as is
+                resolvedRequirements.push(req);
+            }
+        }
+
+        return resolvedRequirements;
+    }
+
+    // Add this new function to get all requirements including prerequisites (for stat order only)
+    function getAllRequirementsForStatOrder(talent) {
+        const allReqs = [];
+        const seen = new Map(); // Track highest value for each stat
+
+        // Get direct requirements - USE THE NEW RESOLVER
+        const directReqs = resolveBodyMindRequirements(talent);
+        directReqs.forEach(req => {
+            // Skip Body and Mind - they should already be resolved
+            if (req.stat === 'Body' || req.stat === 'Mind') {
+                return;
+            }
+
+            if (!seen.has(req.stat) || seen.get(req.stat) < req.value) {
+                seen.set(req.stat, req.value);
+            }
+        });
+
+        // Get requirements from prerequisite talents
+        const prerequisites = getPrerequisiteTalents(talent);
+        prerequisites.forEach(prereqTalent => {
+            const prereqReqs = resolveBodyMindRequirements(prereqTalent); // USE RESOLVER HERE TOO
+            prereqReqs.forEach(req => {
+                // Skip Body and Mind - they should already be resolved
+                if (req.stat === 'Body' || req.stat === 'Mind') {
+                    return;
+                }
+
+                if (!seen.has(req.stat) || seen.get(req.stat) < req.value) {
+                    seen.set(req.stat, req.value);
+                }
+            });
+        });
+
+        // Convert map back to array
+        seen.forEach((value, stat) => {
+            allReqs.push({ stat, value });
+        });
+
+        return allReqs;
+    }
+
+
+    // Add this helper function
+    function getPrerequisiteTalents(talent, visited = new Set()) {
+        const prerequisites = [];
+
+        // Prevent infinite loops
+        if (visited.has(talent.id)) {
+            return prerequisites;
+        }
+        visited.add(talent.id);
+
+        if (talent.reqs && talent.reqs.from) {
+            const requiredTalentNames = getRequiredTalentNames(talent);
+
+            requiredTalentNames.forEach(reqName => {
+                const requiredTalent = findTalentByName(reqName);
+                if (requiredTalent) {
+                    // Add the prerequisite talent
+                    prerequisites.push(requiredTalent);
+
+                    // Recursively get prerequisites of prerequisites
+                    const nestedPrereqs = getPrerequisiteTalents(requiredTalent, visited);
+                    prerequisites.push(...nestedPrereqs);
+                }
+            });
+        }
+
+        return prerequisites;
+    }
+
     function isTalentAvailable(talent, currentStats) {
         const requirements = getTalentRequirements(talent);
 
         // Talent is available if it has no requirements or all requirements are met
         if (requirements.length === 0) return true;
 
+        // Calculate Body and Mind from current stats
+        const derivedStats = calculateBodyAndMind(currentStats);
+
         for (const req of requirements) {
+            let currentValue;
+
+            // Check if requirement is for Body or Mind
+            if (req.stat === 'Body' || req.stat === 'Mind') {
+                currentValue = derivedStats[req.stat];
+            } else {
+                currentValue = currentStats[req.stat] || 0;
+            }
+
             // Check if the current stat value is less than the required value
-            if ((currentStats[req.stat] || 0) < req.value) {
+            if (currentValue < req.value) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -1346,6 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
         card.className = 'talent-card';
         card.dataset.talentId = talent.id;
 
+        // Use ORIGINAL requirements for display (shows Body/Mind as-is)
         const requirements = getTalentRequirements(talent);
 
         // Check if this talent has conflicts with any selected talents
@@ -1362,24 +1522,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const hasExclusiveConflict = conflictingTalents.length > 0;
 
-        // Add conflict class if there's an actual conflict
         if (hasExclusiveConflict) {
             card.classList.add('exclusive-conflict');
         }
 
-        // Get the "from" field if it exists
         let fromHTML = '';
         if (talent.reqs && talent.reqs.from) {
             fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
         }
 
-        // Get the stats field if it exists and is not "N/A"
         let statsHTML = '';
         if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
             statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
         }
 
-        // Only show exclusive warning if there's an actual conflict
         let exclusiveHTML = '';
         if (hasExclusiveConflict) {
             const exclusivesList = conflictingTalents.join(', ');
@@ -1390,7 +1546,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (requirements.length > 0) {
             reqsHTML = '<div class="talent-requirements">';
             requirements.forEach(req => {
-                reqsHTML += `<span class="req-badge">${req.stat}: ${req.value}</span>`;
+                // Add special styling for Body/Mind requirements (derived stats)
+                const badgeClass = (req.stat === 'Body' || req.stat === 'Mind')
+                    ? 'req-badge derived-stat'
+                    : 'req-badge';
+                reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
             });
             reqsHTML += '</div>';
         }
@@ -1507,9 +1667,18 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const talent of newTalents) {
             const requirements = getTalentRequirements(talent);
             for (const req of requirements) {
-                if ((currentMaxStats[req.stat] || 0) < req.value) {
-                    allRequirementsMet = false;
-                    break;
+                // Handle Body/Mind checking
+                if (req.stat === 'Body' || req.stat === 'Mind') {
+                    const derivedStats = calculateBodyAndMind(currentMaxStats);
+                    if (derivedStats[req.stat] < req.value) {
+                        allRequirementsMet = false;
+                        break;
+                    }
+                } else {
+                    if ((currentMaxStats[req.stat] || 0) < req.value) {
+                        allRequirementsMet = false;
+                        break;
+                    }
                 }
             }
             if (!allRequirementsMet) break;
@@ -1525,10 +1694,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // ==========================================
-        // FIXED: Accumulate requirements from ALL selected talents + new talents
-        // ==========================================
-
         // Get ALL currently selected talents
         const allSelectedTalents = Array.from(selectedTalents)
             .map(id => allTalents.find(t => t.id === id))
@@ -1539,43 +1704,117 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const combinedRequirements = {};
 
-        // Process ALL talents (existing + new)
-        allTalentsToConsider.forEach((talent, talentIndex) => {
+        // First pass - collect all explicit stat requirements
+        const explicitStatRequirements = new Map();
+        const derivedStatRequirements = new Map(); // Store Body/Mind requirements separately
+
+        allTalentsToConsider.forEach((talent) => {
             const requirements = getTalentRequirements(talent);
 
             if (requirements.length === 0) return;
 
             requirements.forEach(req => {
-                if (!combinedRequirements[req.stat]) {
-                    combinedRequirements[req.stat] = [];
-                }
-
-                if (requirements.length === 1) {
-                    // Single requirement can be pre or post
-                    combinedRequirements[req.stat].push({
+                // Separate derived stats (Body/Mind) from explicit stats
+                if (req.stat === 'Body' || req.stat === 'Mind') {
+                    if (!derivedStatRequirements.has(req.stat)) {
+                        derivedStatRequirements.set(req.stat, []);
+                    }
+                    derivedStatRequirements.get(req.stat).push({
                         value: req.value,
-                        condition: 'any'
+                        talent: talent,
+                        multiReq: requirements.length > 1,
+                        allRequirements: requirements
                     });
                 } else {
-                    // Multiple requirements from same talent must be together (while condition)
-                    combinedRequirements[req.stat].push({
-                        value: req.value,
-                        condition: 'while',
-                        talentGroup: `talent_${talent.id}`,  // Group identifier
-                        allRequirements: requirements  // Store all requirements
-                    });
+                    // Track explicit requirements
+                    const currentMax = explicitStatRequirements.get(req.stat) || 0;
+                    explicitStatRequirements.set(req.stat, Math.max(currentMax, req.value));
+
+                    // Add to combined requirements
+                    if (!combinedRequirements[req.stat]) {
+                        combinedRequirements[req.stat] = [];
+                    }
+
+                    if (requirements.length === 1) {
+                        combinedRequirements[req.stat].push({
+                            value: req.value,
+                            condition: 'any'
+                        });
+                    } else {
+                        combinedRequirements[req.stat].push({
+                            value: req.value,
+                            condition: 'while',
+                            talentGroup: `talent_${talent.id}`,
+                            allRequirements: requirements
+                        });
+                    }
+                }
+            });
+        });
+
+        // Second pass - resolve Body/Mind requirements
+        const derivedStatMapping = {
+            'Body': ['Strength', 'Fortitude', 'Agility'],
+            'Mind': ['Intelligence', 'Willpower', 'Charisma']
+        };
+
+        derivedStatRequirements.forEach((requirements, derivedStat) => {
+            const componentStats = derivedStatMapping[derivedStat];
+
+            requirements.forEach(req => {
+                // Check if ANY component stat already has an explicit requirement that satisfies this
+                let alreadySatisfied = false;
+                let satisfyingStat = null;
+
+                for (const compStat of componentStats) {
+                    const explicitReq = explicitStatRequirements.get(compStat) || 0;
+                    if (explicitReq >= req.value) {
+                        alreadySatisfied = true;
+                        satisfyingStat = compStat;
+                        console.log(`${derivedStat} ${req.value} already satisfied by ${compStat} ${explicitReq}`);
+                        break;
+                    }
+                }
+
+                // If not already satisfied by an explicit requirement, pass the DERIVED stat to optimizer
+                if (!alreadySatisfied) {
+                    console.log(`Passing ${derivedStat} ${req.value} to optimizer for resolution`);
+
+                    // Add to combined requirements AS THE DERIVED STAT (Mind/Body)
+                    if (!combinedRequirements[derivedStat]) {
+                        combinedRequirements[derivedStat] = [];
+                    }
+
+                    if (req.multiReq) {
+                        combinedRequirements[derivedStat].push({
+                            value: req.value,
+                            condition: 'while',
+                            talentGroup: `talent_${req.talent.id}`,
+                            allRequirements: req.allRequirements
+                        });
+                    } else {
+                        combinedRequirements[derivedStat].push({
+                            value: req.value,
+                            condition: 'any'
+                        });
+                    }
                 }
             });
         });
 
         const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
-        // ==========================================
-        // DEBUGGING: Show all combined requirements
-        // ==========================================
         console.log('=== TALENT SELECTION DEBUG ===');
         console.log('New talents being added:', newTalents.map(t => t.name));
         console.log('Already selected talents:', allSelectedTalents.map(t => t.name));
+        console.log('\n--- Explicit Stat Requirements ---');
+        explicitStatRequirements.forEach((value, stat) => {
+            console.log(`${stat}: ${value}`);
+        });
+        console.log('\n--- Derived Stat Requirements ---');
+        derivedStatRequirements.forEach((reqs, stat) => {
+            console.log(`${stat}:`, reqs.map(r => `${r.value} (from ${r.talent.name})`));
+        });
         console.log('\n--- Combined Requirements ---');
 
         for (const [statName, requirements] of Object.entries(deduplicatedRequirements)) {
@@ -1600,19 +1839,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Only calculate if there are actual requirements
         if (Object.keys(deduplicatedRequirements).length > 0) {
+            // Reset derived stat choices only if we're starting fresh
+            if (!window.selectedDerivedStats) {
+                window.selectedDerivedStats = {};
+            }
+
             const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+            // Check if we need user input for derived stats
+            if (optimalBuild === null && window.pendingDerivedStatChoices && window.pendingDerivedStatChoices.length > 0) {
+                showDerivedStatSelectionModal(window.pendingDerivedStatChoices);
+                window.pendingRequirements = deduplicatedRequirements;
+                return;
+            }
 
             if (optimalBuild) {
                 pendingOptimalBuild = optimalBuild;
                 showTalentConfirmationModal(pendingTalentSelection.dependencyIds, optimalBuild, hasNewRequirements);
             } else {
                 alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
+                pendingTalentSelection = null;
             }
         } else if (!hasNewRequirements) {
-            // No requirements at all - just add the talents
             confirmTalentSelection();
         } else {
             alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
+            pendingTalentSelection = null;
         }
     }
     // Add function to collect dependencies
@@ -1861,27 +2113,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // NOW recalculate the shrine with the pre-shrine values we just set
-        const preShrineBuild = {};
-        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
-            const statName = row.getAttribute('data-stat');
-            const preInput = row.querySelector('.pre-shrine');
-            const preValue = parseInt(preInput.value) || 0;
-
-            if (preValue > 0) {
-                preShrineBuild[statName] = preValue;
-            }
-        });
-
-        // Simulate shrine averaging with the pre-shrine values
-        const shrineResult = simulateShrineAveraging(preShrineBuild);
-
-        // Apply post-shrine values (shrine result + additional investment)
+        // Apply post-shrine values directly from the solution
+        // The solution already contains the correct postShrine values from simulateShrineAveragingOptimizer
         for (const [statName, finalValue] of Object.entries(solution.finalStats || {})) {
             const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${statName}"]`);
             if (statRow) {
                 const postInput = statRow.querySelector('.post-shrine');
-                const postShrineValue = shrineResult.postShrine[statName] || 0;
+                const postShrineValue = solution.postShrine[statName] || 0;
 
                 // If stat was in shrine, apply shrine result + additional investment
                 if (postShrineValue > 0) {
@@ -2151,6 +2389,504 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSelectedTalents();
     }
 
+
+    // ==========================================
+    // STAT ORDER TAB
+    // ==========================================
+
+    document.getElementById('generateStatOrder').addEventListener('click', () => {
+        if (selectedTalents.size === 0) {
+            document.getElementById('preOrderContent').innerHTML = `
+            <div class="no-talents-warning">
+                <strong>No Talents Selected</strong>
+                <p>Please select talents in the Talents tab first, then generate the stat order.</p>
+            </div>
+        `;
+            document.getElementById('postOrderContent').innerHTML = `
+            <div class="no-talents-warning">
+                <strong>No Talents Selected</strong>
+                <p>Please select talents in the Talents tab first, then generate the stat order.</p>
+            </div>
+        `;
+            return;
+        }
+
+        const currentBuild = collectManualBuildStats();
+        const statOrders = calculateSplitStatOrder(currentBuild);
+        displaySplitStatOrder(statOrders);
+    });
+
+    function calculateSplitStatOrder(currentBuild) {
+        // Get all selected talents, excluding those that don't count towards total
+        const talents = Array.from(selectedTalents)
+            .map(id => allTalents.find(t => t.id === id))
+            .filter(t => t && !t.dontCountTowardsTotal);
+
+        // If no talents after filtering, return empty orders
+        if (talents.length === 0) {
+            return {
+                preShrine: {
+                    talents: [],
+                    order: {
+                        steps: [],
+                        finalStats: {},
+                        totalPoints: 0,
+                        immediateTalents: []
+                    },
+                    targetStats: currentBuild.pre
+                },
+                postShrine: {
+                    talents: [],
+                    order: {
+                        steps: [],
+                        finalStats: {},
+                        totalPoints: 0,
+                        immediateTalents: []
+                    },
+                    startingStats: {},
+                    targetStats: currentBuild.post
+                }
+            };
+        }
+
+        // 1. Define Target Pre-Shrine Stats
+        const preShrineStats = { ...currentBuild.pre };
+
+        // 2. Separate talents into pre-shrine and post-shrine logic
+        // IMPORTANT: Check if the talent AND all its prerequisites are selected
+        const preShrineTalents = [];
+        const postShrineTalents = [];
+
+        talents.forEach(talent => {
+            const requirements = getAllRequirementsForStatOrder(talent);
+            const prerequisites = getPrerequisiteTalents(talent);
+
+            // Check if all prerequisites are also selected
+            const allPrerequisitesSelected = prerequisites.every(prereq =>
+                selectedTalents.has(prereq.id)
+            );
+
+            if (requirements.length === 0) {
+                // No requirements - available immediately (Pre-Shrine)
+                preShrineTalents.push(talent);
+            } else if (allPrerequisitesSelected) {
+                // All prerequisites are selected, check if requirements can be met pre-shrine
+                const canGetPreShrine = requirements.every(req =>
+                    (preShrineStats[req.stat] || 0) >= req.value
+                );
+
+                if (canGetPreShrine) {
+                    preShrineTalents.push(talent);
+                } else {
+                    postShrineTalents.push(talent);
+                }
+            } else {
+                // Prerequisites not selected, push to post-shrine
+                postShrineTalents.push(talent);
+            }
+        });
+
+        // 3. Calculate optimal order for Pre-Shrine talents
+        // Starting stats are 0 (or empty)
+        const preOrder = calculateOrderForPhase(preShrineTalents, {});
+
+        // 4. Calculate actual starting stats for Post-Shrine (The Shrined Stats)
+        // We need to convert the simple preShrineStats object to the format expected by simulateShrineAveraging
+        const optimizerStatsFormat = {};
+        for (const [stat, value] of Object.entries(preShrineStats)) {
+            if (value > 0) {
+                optimizerStatsFormat[stat] = { currentPre: value };
+            }
+        }
+
+        // Simulate the shrine drop to get the actual starting values for Phase 2
+        const shrineResults = simulateShrineAveraging(optimizerStatsFormat);
+        const postShrineStartingStats = shrineResults.postShrine;
+
+        // 5. Calculate optimal order for Post-Shrine talents
+        // Starting stats are the results of the Shrine
+        const postOrder = calculateOrderForPhase(postShrineTalents, postShrineStartingStats);
+
+        return {
+            preShrine: {
+                talents: preShrineTalents,
+                order: preOrder,
+                targetStats: preShrineStats
+            },
+            postShrine: {
+                talents: postShrineTalents,
+                order: postOrder,
+                startingStats: postShrineStartingStats,
+                targetStats: currentBuild.post
+            }
+        };
+    }
+
+    function calculateOrderForPhase(talents, startingStats) {
+        if (talents.length === 0) {
+            return {
+                steps: [],
+                finalStats: { ...startingStats },
+                totalPoints: 0,
+                immediateTalents: []
+            };
+        }
+
+        // Build a map of stat requirements to talents
+        const talentsByRequirement = new Map();
+
+        talents.forEach(talent => {
+            // Use the function that resolves Body/Mind
+            const requirements = getAllRequirementsForStatOrder(talent);
+
+            if (requirements.length === 0) {
+                if (!talentsByRequirement.has('immediate')) {
+                    talentsByRequirement.set('immediate', []);
+                }
+                talentsByRequirement.get('immediate').push({
+                    talent: talent,
+                    requirements: []
+                });
+            } else {
+                const reqKey = requirements
+                    .map(r => `${r.stat}:${r.value}`)
+                    .sort()
+                    .join('|');
+
+                if (!talentsByRequirement.has(reqKey)) {
+                    talentsByRequirement.set(reqKey, []);
+                }
+
+                talentsByRequirement.get(reqKey).push({
+                    talent: talent,
+                    requirements: requirements
+                });
+            }
+        });
+
+        const statOrder = [];
+        const currentStats = { ...startingStats };
+        const unlockedTalents = new Set();
+
+        // Initialize all stats to starting values
+        const allStatNames = [
+            'Strength', 'Fortitude', 'Agility', 'Intelligence', 'Willpower', 'Charisma',
+            'Heavy Wep.', 'Medium Wep.', 'Light Wep.',
+            'Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'
+        ];
+
+        allStatNames.forEach(stat => {
+            if (currentStats[stat] === undefined) {
+                currentStats[stat] = 0;
+            }
+        });
+
+        // Handle immediate talents
+        const immediateTalents = talentsByRequirement.get('immediate') || [];
+        if (immediateTalents.length > 0) {
+            immediateTalents.forEach(item => {
+                unlockedTalents.add(item.talent.id);
+            });
+        }
+
+        // Build priority queue
+        const priorityQueue = [];
+
+        talentsByRequirement.forEach((talentGroup, reqKey) => {
+            if (reqKey === 'immediate') return;
+
+            const firstTalent = talentGroup[0];
+            const requirements = firstTalent.requirements;
+
+            const calculateCost = (stats) => {
+                return requirements.reduce((sum, req) => {
+                    const needed = Math.max(0, req.value - (stats[req.stat] || 0));
+                    return sum + needed;
+                }, 0);
+            };
+
+            const value = talentGroup.length;
+
+            priorityQueue.push({
+                requirements: requirements,
+                talents: talentGroup,
+                getValue: () => value / Math.max(1, calculateCost(currentStats)),
+                getCost: () => calculateCost(currentStats)
+            });
+        });
+
+        // Process investments
+        let stepNumber = 1;
+        let totalPointsSpent = Object.values(currentStats).reduce((a, b) => a + b, 0) -
+            Object.values(startingStats).reduce((a, b) => a + b, 0);
+
+        while (priorityQueue.length > 0) {
+            priorityQueue.sort((a, b) => b.getValue() - a.getValue());
+
+            const nextGroup = priorityQueue[0];
+            let bestStat = null;
+            let bestStatValue = -Infinity;
+
+            nextGroup.requirements.forEach(req => {
+                const currentValue = currentStats[req.stat] || 0;
+                if (currentValue < req.value) {
+                    const talentsUnlockedByThisStat = priorityQueue.filter(group =>
+                        group.requirements.some(r => r.stat === req.stat && (currentStats[req.stat] || 0) < r.value)
+                    ).length;
+
+                    if (talentsUnlockedByThisStat > bestStatValue) {
+                        bestStatValue = talentsUnlockedByThisStat;
+                        bestStat = req.stat;
+                    }
+                }
+            });
+
+            if (!bestStat) {
+                priorityQueue.shift();
+                continue;
+            }
+
+            currentStats[bestStat] = (currentStats[bestStat] || 0) + 1;
+            totalPointsSpent += 1;
+
+            const newlyUnlocked = [];
+
+            for (let i = priorityQueue.length - 1; i >= 0; i--) {
+                const group = priorityQueue[i];
+                const allReqsMet = group.requirements.every(req =>
+                    (currentStats[req.stat] || 0) >= req.value
+                );
+
+                if (allReqsMet) {
+                    group.talents.forEach(item => {
+                        if (!unlockedTalents.has(item.talent.id)) {
+                            newlyUnlocked.push(item.talent);
+                            unlockedTalents.add(item.talent.id);
+                        }
+                    });
+                    priorityQueue.splice(i, 1);
+                }
+            }
+
+            statOrder.push({
+                step: stepNumber++,
+                stat: bestStat,
+                value: currentStats[bestStat],
+                pointsSpent: 1,
+                totalPointsSpent: totalPointsSpent,
+                unlockedTalents: newlyUnlocked
+            });
+        }
+
+        return {
+            steps: statOrder,
+            finalStats: currentStats,
+            totalPoints: totalPointsSpent,
+            immediateTalents: immediateTalents.map(item => item.talent)
+        };
+    }
+
+    function displaySplitStatOrder(statOrders) {
+        // Check if there are any talents that count towards the total
+        const totalTalents = statOrders.preShrine.talents.length + statOrders.postShrine.talents.length;
+
+        if (totalTalents === 0) {
+            // Check if user has selected talents at all
+            if (selectedTalents.size > 0) {
+                // They have talents, but all are auto-unlocked
+                document.getElementById('preOrderContent').innerHTML = `
+                <div class="no-talents-warning">
+                    <strong>All Selected Talents Auto-Unlock</strong>
+                    <p>The talents you've selected don't require stat investments (e.g., Shadowcaster, Flamecharm).</p>
+                    <p>These talents are automatically unlocked and don't need a stat order.</p>
+                </div>
+            `;
+                document.getElementById('postOrderContent').innerHTML = `
+                <div class="no-talents-warning">
+                    <strong>All Selected Talents Auto-Unlock</strong>
+                    <p>The talents you've selected don't require stat investments (e.g., Shadowcaster, Flamecharm).</p>
+                    <p>These talents are automatically unlocked and don't need a stat order.</p>
+                </div>
+            `;
+            } else {
+                // No talents selected at all
+                document.getElementById('preOrderContent').innerHTML = `
+                <div class="no-talents-warning">
+                    <strong>No Talents Selected</strong>
+                    <p>Please select talents in the Talents tab first, then generate the stat order.</p>
+                </div>
+            `;
+                document.getElementById('postOrderContent').innerHTML = `
+                <div class="no-talents-warning">
+                    <strong>No Talents Selected</strong>
+                    <p>Please select talents in the Talents tab first, then generate the stat order.</p>
+                </div>
+            `;
+            }
+            return;
+        }
+
+        displayPhaseOrder(statOrders.preShrine, 'preOrderContent', true);
+        displayPhaseOrder(statOrders.postShrine, 'postOrderContent', false);
+    }
+
+    function displayPhaseOrder(phaseData, containerId, isPreShrine) {
+        const container = document.getElementById(containerId);
+
+        if (phaseData.talents.length === 0) {
+            container.innerHTML = `
+            <p class="empty-message">No talents unlockable in this phase</p>
+        `;
+            return;
+        }
+
+        let html = '';
+
+        // Merge consecutive steps BEFORE displaying summary
+        const mergedSteps = mergeConsecutiveSteps(phaseData.order.steps);
+
+        // Summary section - use mergedSteps.length instead of phaseData.order.steps.length
+        html += `
+        <div class="stat-order-summary">
+            <h4>Summary</h4>
+            <div class="summary-stats">
+                <div class="summary-stat-item">
+                    <span>Talents:</span>
+                    <strong>${phaseData.talents.length}</strong>
+                </div>
+                <div class="summary-stat-item">
+                    <span>Points Required:</span>
+                    <strong>${phaseData.order.totalPoints}</strong>
+                </div>
+                <div class="summary-stat-item">
+                    <span>Investment Steps:</span>
+                    <strong>${mergedSteps.length}</strong>
+                </div>
+                <div class="summary-stat-item">
+                    <span>Immediate Talents:</span>
+                    <strong>${phaseData.order.immediateTalents.length}</strong>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Immediate talents
+        if (phaseData.order.immediateTalents.length > 0) {
+            html += `
+            <div class="stat-order-step">
+                <div class="step-number">0</div>
+                <div class="step-action">
+                    <span class="step-stat-name">${isPreShrine ? 'Starting Talents' : 'Available After Shrine'}</span>
+                    <span class="step-stat-value">No additional requirements</span>
+                </div>
+                <div class="step-unlocks">
+                    ${phaseData.order.immediateTalents.map(t =>
+                `<div class="unlock-item">+ ${t.name}</div>`
+            ).join('')}
+                </div>
+            </div>
+        `;
+        }
+
+        // Timeline
+        html += '<div class="stat-order-timeline">';
+
+        mergedSteps.forEach((step, index) => {
+            const hasUnlocks = step.unlockedTalents.length > 0;
+
+            html += `
+            <div class="stat-order-step">
+                <div class="step-number">${index + 1}</div>
+                <div class="step-action">
+                    <span class="step-stat-name">${step.stat}</span>
+                    <span class="step-stat-value">
+                        ${step.startValue > 0 ? `${step.startValue} → ${step.endValue}` : `Invest to ${step.endValue}`}
+                        <span class="step-cost">(+${step.totalPoints} point${step.totalPoints > 1 ? 's' : ''})</span>
+                    </span>
+                </div>
+                ${hasUnlocks ? `
+                <div class="step-unlocks">
+                    ${step.unlockedTalents.map(t =>
+                `<div class="unlock-item">+ ${t.name}</div>`
+            ).join('')}
+                </div>
+                ` : ''}
+            </div>
+        `;
+        });
+
+        html += '</div>';
+
+        // Final stats
+        const statsToShow = Object.entries(phaseData.order.finalStats)
+            .filter(([stat, value]) => value > 0)
+            .sort((a, b) => b[1] - a[1]);
+
+        if (statsToShow.length > 0) {
+            html += `
+            <div class="stat-totals">
+                <h4>Final Stat Distribution</h4>
+                <div class="totals-grid">
+        `;
+
+            statsToShow.forEach(([stat, value]) => {
+                html += `
+                <div class="total-stat-item">
+                    <span class="total-stat-name">${stat}</span>
+                    <span class="total-stat-value">${value}</span>
+                </div>
+            `;
+            });
+
+            html += `
+                </div>
+            </div>
+        `;
+        }
+
+        container.innerHTML = html;
+    }
+
+    // Add this new function to merge consecutive steps
+    function mergeConsecutiveSteps(steps) {
+        if (steps.length === 0) return [];
+
+        const merged = [];
+        let currentGroup = {
+            stat: steps[0].stat,
+            startValue: steps[0].value - 1,
+            endValue: steps[0].value,
+            totalPoints: steps[0].pointsSpent,
+            unlockedTalents: [...steps[0].unlockedTalents]
+        };
+
+        for (let i = 1; i < steps.length; i++) {
+            const step = steps[i];
+
+            // If same stat and no talents unlocked in current group, merge
+            if (step.stat === currentGroup.stat && currentGroup.unlockedTalents.length === 0) {
+                currentGroup.endValue = step.value;
+                currentGroup.totalPoints += step.pointsSpent;
+                currentGroup.unlockedTalents.push(...step.unlockedTalents);
+            } else {
+                // Different stat or talents were unlocked, start new group
+                merged.push(currentGroup);
+                currentGroup = {
+                    stat: step.stat,
+                    startValue: step.value - 1,
+                    endValue: step.value,
+                    totalPoints: step.pointsSpent,
+                    unlockedTalents: [...step.unlockedTalents]
+                };
+            }
+        }
+
+        // Don't forget the last group
+        merged.push(currentGroup);
+
+        return merged;
+    }
+
     // Setup filter buttons
     function setupFilterButtons(containerId, filterSet) {
         const container = document.getElementById(containerId);
@@ -2179,6 +2915,9 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBothPanels();
         });
     }
+
+
+
 
     // Setup search bars
     document.getElementById('searchAvailable').addEventListener('input', () => {
@@ -2237,10 +2976,116 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    document.querySelectorAll('#stats-tab .simple-input').forEach(input => {
+        input.addEventListener('input', () => {
+            updateSparePoints();
+        });
+    });
+
     document.getElementById('sortBy').value = availableSortBy;
     document.getElementById('sortOrder').value = availableSortOrder;
     document.getElementById('sortBySelected').value = selectedSortBy;
     document.getElementById('sortOrderSelected').value = selectedSortOrder;
+
+    function showDerivedStatSelectionModal(choices) {
+        const modal = document.getElementById('derivedStatModal');
+        const messageEl = document.getElementById('derivedStatMessage');
+        const choicesContainer = document.getElementById('derivedStatChoices');
+
+        // Use innerHTML instead of textContent to allow HTML formatting
+        messageEl.innerHTML = `
+        <p style="margin-bottom: 12px;">Some talents require Body or Mind stats. Please choose which attribute to invest in:</p>
+        <div style="background-color: rgba(255, 165, 0, 0.2); border-left: 3px solid #ff8c00; padding: 10px; margin-bottom: 15px;">
+            <span style="color: var(--card-text-primary);">This selection will be overridden if you later add talents with specific STR/FTD/AGI or INT/WIL/CHAR requirements. The optimizer will automatically use the stat with the highest existing value.</span>
+        </div>
+    `;
+
+        choicesContainer.innerHTML = '';
+
+        choices.forEach((choice, index) => {
+            const choiceDiv = document.createElement('div');
+            choiceDiv.className = 'derived-stat-choice';
+            choiceDiv.style.cssText = 'margin: 15px 0; padding: 15px; background: var(--input-background); border: 1px solid var(--border-color);';
+
+            choiceDiv.innerHTML = `
+            <div style="margin-bottom: 10px;">
+                <strong>${choice.derivedStat} requirement: ${choice.value}</strong>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <label>Invest in:</label>
+                <select id="derivedChoice${index}" class="derived-stat-select" style="flex: 1;">
+                    ${choice.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                </select>
+            </div>
+        `;
+
+            choicesContainer.appendChild(choiceDiv);
+        });
+
+        modal.classList.add('active');
+    }
+
+    // Add event listener for confirming derived stat choices
+    document.getElementById('confirmDerivedStats')?.addEventListener('click', () => {
+        const choices = window.pendingDerivedStatChoices;
+        if (!choices) return;
+
+        // Collect user selections
+        const selectedStats = {};
+        choices.forEach((choice, index) => {
+            const select = document.getElementById(`derivedChoice${index}`);
+            selectedStats[choice.derivedStat] = select.value;
+        });
+
+        console.log('User selected derived stats:', selectedStats);
+
+        // Store selections for the optimizer to use
+        window.selectedDerivedStats = selectedStats;
+
+        // Clear the choices array
+        window.pendingDerivedStatChoices = [];
+
+        // Close modal
+        document.getElementById('derivedStatModal').classList.remove('active');
+
+        // Proceed with calculation
+        proceedWithDerivedStatChoices();
+    });
+
+    function proceedWithDerivedStatChoices() {
+        if (!window.pendingRequirements) {
+            console.error('No pending requirements found');
+            return;
+        }
+
+        console.log('Proceeding with derived stat choices:', window.selectedDerivedStats);
+
+        // Recalculate with user's selections
+        const optimalBuild = calculateOptimalOrder(window.pendingRequirements);
+
+        if (optimalBuild) {
+            pendingOptimalBuild = optimalBuild;
+
+            // Check if we have pending talent selection
+            if (pendingTalentSelection) {
+                const hasNewRequirements = pendingTalentSelection.dependencyIds
+                    .map(id => allTalents.find(t => t.id === id))
+                    .filter(t => t)
+                    .some(talent => getTalentRequirements(talent).length > 0);
+
+                showTalentConfirmationModal(
+                    pendingTalentSelection.dependencyIds,
+                    optimalBuild,
+                    hasNewRequirements
+                );
+            }
+        } else {
+            alert('Warning: No optimal build found with selected stats. Please try different choices.');
+        }
+
+        // Clean up
+        window.pendingRequirements = null;
+    }
 
     // Initialize talents tab
     setupFilterButtons('availableFilters', availableFilters);

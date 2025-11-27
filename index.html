@@ -15,6 +15,7 @@
         <button class="tab-btn active" data-tab="stats">Build</button>
         <button class="tab-btn" data-tab="optimizer">Point Optimizer</button>
         <button class="tab-btn" data-tab="talents">Talents</button>
+        <button class="tab-btn" data-tab="statorder">Stat Order</button>
         <button class="tab-btn" data-tab="recommendations">Recommendations</button>
     </div>
 
@@ -566,7 +567,7 @@
             <div class="talents-panel">
                 <div class="panel-header">
                     <h3>Selected Talents</h3>
-                    
+
                     <div class="search-bar">
                         <input type="text" id="searchSelected" placeholder="Search selected..." />
                     </div>
@@ -616,6 +617,41 @@
         </div>
     </div>
 
+    <!-- Stat Order Tab Content -->
+
+    <div class="tab-content" id="statorder-tab">
+        <div class="stat-order-container">
+            <div class="stat-order-header">
+                <h2>Stat Leveling Order</h2>
+                <p class="stat-order-description">This shows the optimal order to level your stats based on your current
+                    build and selected talents.</p>
+            </div>
+
+            <div class="stat-order-main">
+                <!-- Pre-Shrine Order -->
+                <div class="stat-order-section">
+                    <h3>Pre-Shrine Investment Order</h3>
+                    <div id="preOrderContent" class="order-content">
+                        <p class="empty-message">Generate stat order to see pre-shrine leveling path</p>
+                    </div>
+                </div>
+
+                <!-- Post-Shrine Order -->
+                <div class="stat-order-section">
+                    <h3>Post-Shrine Investment Order</h3>
+                    <div id="postOrderContent" class="order-content">
+                        <p class="empty-message">Generate stat order to see post-shrine leveling path</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="stat-order-controls">
+                <button id="generateStatOrder" class="generate-order-btn">Generate Stat Order</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Recommendations Tab Content -->
     <div class="tab-content" id="recommendations-tab">
         <div class="recommendations-container">
@@ -642,6 +678,21 @@
             <div class="talent-confirmation-footer">
                 <button class="confirm-btn" id="confirmBuildBtn">Apply Changes</button>
                 <button class="decline-btn" id="declineBuildBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="derivedStatModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Choose Stat Allocation</h2>
+            </div>
+            <div class="modal-body">
+                <p id="derivedStatMessage"></p>
+                <div id="derivedStatChoices"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmDerivedStats" class="apply-builder-btn">Confirm Choices</button>
             </div>
         </div>
     </div>
