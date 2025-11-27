@@ -925,11 +925,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Apply the free point rule for attunements
-        if (attunementCount > 0) {
-            totalInvested = totalInvested + 1 - attunementCount;
-        }
-
         if (affectedStats.length === 0) {
             return { totalInvested: 0, postShrine: {}, leftoverPoints: 0 };
         }

@@ -1344,7 +1344,7 @@ input[type="number"] {
     background-color: var(--card-background);
     border: 1px solid var(--border-color);
     padding: 30px;
-    width: 700px; 
+    width: 100%; 
     max-width: 90vw;
     max-height: 80vh; /* Set a max height for the whole tab content */
     overflow-y: auto; /* Allow the whole container to scroll if necessary */
