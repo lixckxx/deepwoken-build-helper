@@ -1231,7 +1231,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Rarity toggle states
     let showOriginTalents = true;
     let showQuestTalents = true;
-    let showOathTalents = true
+    let showOathTalents = true;
+    let showEquipmentTalents = true;
+    let showOutfitTalents = true;
 
     // Sort settings
     let availableSortBy = 'points';
@@ -1330,6 +1332,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (value > 0) {
                         reqs.push({ stat, value });
                     }
+                }
+            }
+
+            // NEW: Power requirement
+            if (talent.reqs.power) {
+                const powerValue = parseInt(talent.reqs.power);
+                if (powerValue > 0) {
+                    reqs.push({ stat: 'Power', value: powerValue, isPower: true });
                 }
             }
         }
@@ -1548,13 +1558,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return false;
             }
 
+            if (rarity == 'Equipment' && !showEquipmentTalents) {
+                return false;
+            }
+
+            if (rarity == 'Outfit' && !showOutfitTalents) {
+                return false;
+            }
+
             // If Quest talent and toggle is off, filter it out
             if (rarity === 'Quest' && !showQuestTalents) {
                 return false;
             }
 
             // If talent requires oath and toggle is off, filter it out
-            const isOathRelated = rarity === 'Oath' || requiresOath(talent);
+            const isOathRelated = rarity === 'Oath' // || requiresOath(talent);
             if (!showOathTalents && isOathRelated) {
                 return false;
             }
@@ -1563,64 +1581,71 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function createTalentCard(talent, isSelected = false) {
-        const card = document.createElement('div');
-        card.className = 'talent-card';
-        card.dataset.talentId = talent.id;
+   function createTalentCard(talent, isSelected = false) {
+    const card = document.createElement('div');
+    card.className = 'talent-card';
+    card.dataset.talentId = talent.id;
 
-        // Use ORIGINAL requirements for display (shows Body/Mind as-is)
-        const requirements = getTalentRequirements(talent);
+    // Use ORIGINAL requirements for display (shows Body/Mind as-is)
+    const requirements = getTalentRequirements(talent);
 
-        // Check if this talent has conflicts with any selected talents
-        const conflictingTalents = [];
-        if (talent.exclusiveWith && talent.exclusiveWith.length > 0) {
-            talent.exclusiveWith.forEach(exclusiveName => {
-                if (!exclusiveName || exclusiveName === '') return;
-                const exclusiveTalent = findTalentByName(exclusiveName);
-                if (exclusiveTalent && selectedTalents.has(exclusiveTalent.id)) {
-                    conflictingTalents.push(exclusiveName);
-                }
-            });
-        }
+    // Check if this talent has conflicts with any selected talents
+    const conflictingTalents = [];
+    if (talent.exclusiveWith && talent.exclusiveWith.length > 0) {
+        talent.exclusiveWith.forEach(exclusiveName => {
+            if (!exclusiveName || exclusiveName === '') return;
+            const exclusiveTalent = findTalentByName(exclusiveName);
+            if (exclusiveTalent && selectedTalents.has(exclusiveTalent.id)) {
+                conflictingTalents.push(exclusiveName);
+            }
+        });
+    }
 
-        const hasExclusiveConflict = conflictingTalents.length > 0;
+    const hasExclusiveConflict = conflictingTalents.length > 0;
 
-        if (hasExclusiveConflict) {
-            card.classList.add('exclusive-conflict');
-        }
+    if (hasExclusiveConflict) {
+        card.classList.add('exclusive-conflict');
+    }
 
-        let fromHTML = '';
-        if (talent.reqs && talent.reqs.from) {
-            fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
-        }
+    let fromHTML = '';
+    if (talent.reqs && talent.reqs.from) {
+        fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
+    }
 
-        let statsHTML = '';
-        if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
-            statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
-        }
+    let statsHTML = '';
+    if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
+        statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
+    }
 
-        let exclusiveHTML = '';
-        if (hasExclusiveConflict) {
-            const exclusivesList = conflictingTalents.join(', ');
-            exclusiveHTML = `<div class="talent-exclusive">Conflicts with: ${exclusivesList}</div>`;
-        }
+    let exclusiveHTML = '';
+    if (hasExclusiveConflict) {
+        const exclusivesList = conflictingTalents.join(', ');
+        exclusiveHTML = `<div class="talent-exclusive">Conflicts with: ${exclusivesList}</div>`;
+    }
 
-        let reqsHTML = '';
-        if (requirements.length > 0) {
-            reqsHTML = '<div class="talent-requirements">';
-            requirements.forEach(req => {
-                // Add special styling for Body/Mind requirements (derived stats)
-                const badgeClass = (req.stat === 'Body' || req.stat === 'Mind')
-                    ? 'req-badge derived-stat'
-                    : 'req-badge';
-                reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
-            });
-            reqsHTML += '</div>';
-        }
+    let reqsHTML = '';
+    if (requirements.length > 0) {
+        reqsHTML = '<div class="talent-requirements">';
+        requirements.forEach(req => {
+            // Add special styling for different requirement types
+            let badgeClass = 'req-badge';
+            
+            if (req.isPower) {
+                // Special class for power requirements
+                badgeClass = 'req-badge power-req';
+            } else if (req.stat === 'Body' || req.stat === 'Mind') {
+                // Derived stats
+                badgeClass = 'req-badge derived-stat';
+            }
+            
+            reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
+        });
+        reqsHTML += '</div>';
+    }
 
-        const nameClass = hasExclusiveConflict ? 'talent-name conflict' : 'talent-name';
+    const nameClass = hasExclusiveConflict ? 'talent-name conflict' : 'talent-name';
 
-        card.innerHTML = `
+    card.innerHTML = `
         <div class="talent-header">
             <span class="${nameClass}">${talent.name}</span>
             <span class="talent-rarity">${talent.rarity || 'Common'}</span>
@@ -1632,16 +1657,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ${reqsHTML}
     `;
 
-        card.addEventListener('click', () => {
-            if (isSelected) {
-                unselectTalent(talent.id);
-            } else {
-                selectTalent(talent.id);
-            }
-        });
+    card.addEventListener('click', () => {
+        if (isSelected) {
+            unselectTalent(talent.id);
+        } else {
+            selectTalent(talent.id);
+        }
+    });
 
-        return card;
-    }
+    return card;
+}
 
 
 
@@ -3021,6 +3046,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('toggleOath').addEventListener('change', (e) => {
         showOathTalents = e.target.checked;
+        renderAvailableTalents();
+    });
+
+    document.getElementById('toggleEquipment').addEventListener('change', (e) => {
+        showEquipmentTalents = e.target.checked;
+        renderAvailableTalents();
+    });
+
+    document.getElementById('toggleOutfit').addEventListener('change', (e) => {
+        showOutfitTalents = e.target.checked;
         renderAvailableTalents();
     });
 

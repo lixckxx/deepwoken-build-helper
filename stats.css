@@ -25,7 +25,7 @@
 body {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+   justify-content: flex-start;
     align-items: center;
     min-height: 100vh;
     margin: 0;
@@ -141,7 +141,9 @@ input[type="number"] {
 }
 
 .power-card p.spare-points-display {
-    font-weight: normal; 
+    font-weight: normal;
+    color: var(--card-text-secondary); 
+    font-size: 0.9em;
 }
 
 .power-card p:nth-child(2) {
@@ -698,6 +700,11 @@ input[type="number"] {
 .req-badge.derived-stat {
     background-color: #4a5568;
     border: 1px solid #718096;
+}
+
+.req-badge.power-req {
+   background-color: var(--button-background);
+    color: var(--button-textcolor);
 }
 
 .loading-message,
@@ -1582,3 +1589,4 @@ input[type="number"] {
 .notification.info .notification-icon {
     color: #4682b4;
 }
+
