@@ -1455,3 +1455,130 @@ input[type="number"] {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* Notification System */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    width: 90%;
+    max-width: 500px;
+}
+
+.notification {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    padding: 15px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: auto;
+    animation: slideDown 0.3s ease-out;
+    position: relative;
+}
+
+.notification.hiding {
+    animation: slideUp 0.3s ease-out forwards;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+.notification-icon {
+    font-size: 1.5em;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+    color: var(--card-text-primary);
+}
+
+.notification-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.notification-message {
+    font-size: 0.9em;
+    color: var(--card-text-secondary);
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: var(--card-text-primary);
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.notification-close:hover {
+    opacity: 1;
+}
+
+/* Notification types */
+.notification.success {
+    border-left: 4px solid #006400;
+}
+
+.notification.success .notification-icon {
+    color: #006400;
+}
+
+.notification.error {
+    border-left: 4px solid #dc143c;
+}
+
+.notification.error .notification-icon {
+    color: #dc143c;
+}
+
+.notification.warning {
+    border-left: 4px solid #ff8c00;
+}
+
+.notification.warning .notification-icon {
+    color: #ff8c00;
+}
+
+.notification.info {
+    border-left: 4px solid #4682b4;
+}
+
+.notification.info .notification-icon {
+    color: #4682b4;
+}

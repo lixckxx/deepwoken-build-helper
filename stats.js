@@ -1,8 +1,58 @@
 document.addEventListener('DOMContentLoaded', () => {
+    function showNotification(message, type = 'info', duration = 4000) {
+        const container = document.getElementById('notificationContainer');
+
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+
+        const icons = {
+            success: '✓',
+            error: '✕',
+            warning: '⚠',
+            info: 'ℹ'
+        };
+
+        const titles = {
+            success: 'Success',
+            error: 'Error',
+            warning: 'Warning',
+            info: 'Info'
+        };
+
+        notification.innerHTML = `
+            <span class="notification-icon">${icons[type]}</span>
+            <div class="notification-content">
+                <div class="notification-title">${titles[type]}</div>
+                <div class="notification-message">${message}</div>
+            </div>
+            <button class="notification-close">×</button>
+        `;
+
+        container.appendChild(notification);
+
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            removeNotification(notification);
+        });
+
+        // Auto-remove after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                removeNotification(notification);
+            }, duration);
+        }
+    }
+
+    function removeNotification(notification) {
+        notification.classList.add('hiding');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }
+
     // Tab Navigation
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
-
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const tabName = button.getAttribute('data-tab');
@@ -1026,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (solution) {
             displayResults(solution);
         } else {
-            alert('No valid solution found within constraints. Please adjust your requirements.');
+            showNotification('No valid solution found within constraints. Please adjust your requirements.');
         }
     }
 
@@ -1222,14 +1272,32 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clearAllTalents')?.addEventListener('click', () => {
         if (selectedTalents.size === 0) return;
 
-        const confirm = window.confirm(
-            `Are you sure you want to remove all ${selectedTalents.size} selected talents and clear your build?`
-        );
+        // Show modal instead of confirm dialog
+        const modal = document.getElementById('clearTalentsModal');
+        const message = document.getElementById('clearTalentsMessage');
 
-        if (confirm) {
-            selectedTalents.clear();
-            recalculateBuildForRemainingTalents();
-            renderBothPanels();
+        message.textContent = `Are you sure you want to remove all ${selectedTalents.size} selected talents and clear your build?`;
+
+        modal.classList.add('active');
+    });
+
+    document.getElementById('confirmClearBtn')?.addEventListener('click', () => {
+        selectedTalents.clear();
+        recalculateBuildForRemainingTalents();
+        renderBothPanels();
+
+        document.getElementById('clearTalentsModal').classList.remove('active');
+        showNotification('All talents cleared successfully', 'success');
+    });
+
+    document.getElementById('declineClearBtn')?.addEventListener('click', () => {
+        document.getElementById('clearTalentsModal').classList.remove('active');
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('clearTalentsModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'clearTalentsModal') {
+            document.getElementById('clearTalentsModal').classList.remove('active');
         }
     });
 
@@ -1852,13 +1920,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 pendingOptimalBuild = optimalBuild;
                 showTalentConfirmationModal(pendingTalentSelection.dependencyIds, optimalBuild, hasNewRequirements);
             } else {
-                alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
+                showNotification('No optimal build found with selected stats. Please try different choices.', 'warning');
                 pendingTalentSelection = null;
             }
         } else if (!hasNewRequirements) {
             confirmTalentSelection();
         } else {
-            alert('Warning: No optimal build found within constraints. Talents won\'t be added.');
+            showNotification('No optimal build found with selected stats. Please try different choices.', 'warning');
             pendingTalentSelection = null;
         }
     }
@@ -2142,9 +2210,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function unselectTalent(talentId) {
-        // Remove the talent
-        selectedTalents.delete(talentId);
-
         // Check if any remaining talents depend on this one
         const dependentTalents = [];
         for (const selectedId of selectedTalents) {
@@ -2159,27 +2224,47 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // If there are dependent talents, warn the user
+        // If there are dependent talents, show confirmation modal
         if (dependentTalents.length > 0) {
-            const confirm = window.confirm(
-                `Warning: The following talents depend on "${allTalents.find(t => t.id === talentId)?.name}":\n\n` +
-                dependentTalents.join('\n') +
-                `\n\nRemoving this talent may make your build invalid. Continue?`
-            );
+            const modal = document.getElementById('dependentTalentsModal');
+            const message = document.getElementById('dependentTalentsMessage');
+            const talentsList = document.getElementById('dependentTalentsList');
+            const removedTalent = allTalents.find(t => t.id === talentId);
 
-            if (!confirm) {
-                // Re-add the talent if user cancels
-                selectedTalents.add(talentId);
-                renderBothPanels();
-                return;
-            }
+            message.textContent = `The following talents depend on "${removedTalent.name}". Removing this talent may make your build invalid.`;
+
+            // Populate the dependent talents list
+            talentsList.innerHTML = '';
+            dependentTalents.forEach(talentName => {
+                const li = document.createElement('li');
+                li.textContent = talentName;
+                talentsList.appendChild(li);
+            });
+
+            // Store the talent ID for the confirmation handler
+            window.pendingTalentRemoval = talentId;
+
+            modal.classList.add('active');
+            return;
         }
+
+        // No dependencies, proceed with removal
+        proceedWithTalentRemoval(talentId);
+    }
+
+    // Add this new function to handle the actual removal
+    function proceedWithTalentRemoval(talentId) {
+        // Remove the talent
+        selectedTalents.delete(talentId);
 
         // Recalculate build with remaining talents
         recalculateBuildForRemainingTalents();
 
         // Re-render both panels
         renderBothPanels();
+
+        const removedTalent = allTalents.find(t => t.id === talentId);
+        showNotification(`Removed "${removedTalent.name}" from your build`, 'success');
     }
 
     // Add this new function to recalculate the build
@@ -2977,6 +3062,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Dependent Talents Modal Handlers
+    document.getElementById('confirmRemoveTalentBtn')?.addEventListener('click', () => {
+        const talentId = window.pendingTalentRemoval;
+        if (talentId) {
+            proceedWithTalentRemoval(talentId);
+            window.pendingTalentRemoval = null;
+        }
+        document.getElementById('dependentTalentsModal').classList.remove('active');
+    });
+
+    document.getElementById('declineRemoveTalentBtn')?.addEventListener('click', () => {
+        const talentId = window.pendingTalentRemoval;
+        if (talentId) {
+            // Re-add the talent if user cancels
+            selectedTalents.add(talentId);
+            renderBothPanels();
+            window.pendingTalentRemoval = null;
+        }
+        document.getElementById('dependentTalentsModal').classList.remove('active');
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('dependentTalentsModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'dependentTalentsModal') {
+            const talentId = window.pendingTalentRemoval;
+            if (talentId) {
+                // Re-add the talent if user cancels
+                selectedTalents.add(talentId);
+                renderBothPanels();
+                window.pendingTalentRemoval = null;
+            }
+            document.getElementById('dependentTalentsModal').classList.remove('active');
+        }
+    });
+
+
     document.getElementById('sortBy').value = availableSortBy;
     document.getElementById('sortOrder').value = availableSortOrder;
     document.getElementById('sortBySelected').value = selectedSortBy;
@@ -3075,7 +3196,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
         } else {
-            alert('Warning: No optimal build found with selected stats. Please try different choices.');
+            showNotification('No optimal build found with selected stats. Please try different choices.', 'warning');
         }
 
         // Clean up

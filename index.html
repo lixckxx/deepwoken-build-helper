@@ -697,6 +697,41 @@
         </div>
     </div>
 
+    <div id="dependentTalentsModal" class="talent-confirmation-modal">
+        <div class="talent-confirmation-content">
+            <div class="talent-confirmation-header">
+                <h2>Remove Talent?</h2>
+                <p id="dependentTalentsMessage"></p>
+            </div>
+            <div class="talent-confirmation-body">
+                <div class="talent-list-section" id="dependentTalentsListSection">
+                    <h3>Dependent Talents</h3>
+                    <ul id="dependentTalentsList"></ul>
+                </div>
+            </div>
+            <div class="talent-confirmation-footer">
+                <button class="confirm-btn" id="confirmRemoveTalentBtn">Remove Anyway</button>
+                <button class="decline-btn" id="declineRemoveTalentBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clearTalentsModal" class="talent-confirmation-modal">
+        <div class="talent-confirmation-content">
+            <div class="talent-confirmation-header">
+                <h2>Clear All Talents?</h2>
+                <p id="clearTalentsMessage"></p>
+            </div>
+            <div class="talent-confirmation-footer">
+                <button class="confirm-btn" id="confirmClearBtn">Clear All</button>
+                <button class="decline-btn" id="declineClearBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="notification-container"></div>
+
     <script src="stats.js"></script>
 
 </body>
