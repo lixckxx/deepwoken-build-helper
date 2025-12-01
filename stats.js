@@ -1224,6 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
 
     let allTalents = [];
+    let allWeapons = [];
     let selectedTalents = new Set();
     let availableFilters = new Set();
     let selectedFilters = new Set();
@@ -1242,8 +1243,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedSortOrder = 'desc';
 
 
+    let weaponFilters = new Set();
+    let weaponSortBy = 'scaledDamage';
+    let weaponSortOrder = 'desc';
+
     let pendingTalentSelection = null;
     let pendingOptimalBuild = null;
+
+    let equippedWeapon = null;
+    let pendingWeaponSelection = null;
+    let pendingWeaponOptimalBuild = null;
 
     // Fetch talents data
     async function loadTalents() {
@@ -1251,11 +1260,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('./proxy.json');
             const data = await response.json();
 
+            const talentsData = data.talents || {};
+
             // List of talent IDs to hide
             const hiddenTalents = ['thank you'];
 
             // Convert object to array and filter out invalid entries and hidden talents
-            allTalents = Object.entries(data)
+            // Note: We are now using 'talentsData' here instead of 'data'
+            allTalents = Object.entries(talentsData)
                 .filter(([key, talent]) => talent && talent.name && !hiddenTalents.includes(key.toLowerCase()))
                 .map(([key, talent]) => ({
                     id: key,
@@ -1270,6 +1282,754 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<p class="empty-message">Error loading talents. Please check console.</p>';
         }
     }
+
+    async function loadWeapons() {
+        try {
+            const response = await fetch('./proxy.json');
+            const data = await response.json();
+
+            const weaponsData = data.weapons || {};
+
+            allWeapons = Object.entries(weaponsData)
+                .filter(([key, weapon]) => weapon && weapon.name)
+                .map(([key, weapon]) => ({
+                    id: key,
+                    ...weapon
+                }));
+
+            console.log(`Loaded ${allWeapons.length} weapons`);
+            renderAvailableWeapons();
+        } catch (error) {
+            console.error('Error loading weapons:', error);
+            document.getElementById('availableWeapons').innerHTML =
+                '<p class="empty-message">Error loading weapons. Please check console.</p>';
+        }
+    }
+
+    function getWeaponRequirements(weapon) {
+        const reqs = [];
+
+        if (weapon.reqs) {
+            if (weapon.reqs.base) {
+                for (const [stat, value] of Object.entries(weapon.reqs.base)) {
+                    if (value > 0 && stat !== 'Body' && stat !== 'Mind') {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+
+            if (weapon.reqs.weapon) {
+                for (const [stat, value] of Object.entries(weapon.reqs.weapon)) {
+                    if (value > 0) {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+
+            if (weapon.reqs.attunement) {
+                for (const [stat, value] of Object.entries(weapon.reqs.attunement)) {
+                    if (value > 0) {
+                        reqs.push({ stat, value });
+                    }
+                }
+            }
+
+            if (weapon.reqs.power) {
+                const powerValue = parseInt(weapon.reqs.power);
+                if (powerValue > 0) {
+                    reqs.push({ stat: 'Power', value: powerValue, isPower: true });
+                }
+            }
+        }
+
+        return reqs;
+    }
+
+    function calculateScaledDamage(weapon, currentStats) {
+        const baseDamage = weapon.damage || 0;
+
+        if (!weapon.scaling || Object.keys(weapon.scaling).length === 0) {
+            return baseDamage;
+        }
+
+        let totalScaledDamage = baseDamage;
+
+        // Calculate scaled damage for each scaling stat
+        for (const [stat, scaling] of Object.entries(weapon.scaling)) {
+            if (scaling > 0) {
+                const weaponPoints = currentStats[stat] || 0;
+                const scalingBonus = weaponPoints * ((baseDamage / 1000) * scaling);
+                totalScaledDamage += scalingBonus;
+            }
+        }
+
+        return totalScaledDamage;
+    }
+
+    function isWeaponAvailable(weapon, currentStats) {
+        const requirements = getWeaponRequirements(weapon);
+
+        if (requirements.length === 0) return true;
+
+        for (const req of requirements) {
+            const currentValue = currentStats[req.stat] || 0;
+            if (currentValue < req.value) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function sortWeapons(weapons, sortBy, sortOrder) {
+        return [...weapons].sort((a, b) => {
+            let compareValue = 0;
+
+            switch (sortBy) {
+                case 'name':
+                    compareValue = a.name.localeCompare(b.name);
+                    break;
+                case 'damage':
+                    compareValue = (a.damage || 0) - (b.damage || 0);
+                    break;
+                case 'scaledDamage':
+                    const currentStats = {};
+                    document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                        const statName = row.getAttribute('data-stat');
+                        const postInput = row.querySelector('.post-shrine');
+                        const postValue = parseInt(postInput.value) || 0;
+                        currentStats[statName] = postValue;
+                    });
+
+                    const aScaled = calculateTotalDamage(a, currentStats);
+                    const bScaled = calculateTotalDamage(b, currentStats);
+                    compareValue = aScaled - bScaled;
+                    break;
+                case 'weight':
+                    compareValue = (a.weight || 0) - (b.weight || 0);
+                    break;
+                case 'range':
+                    compareValue = (a.range || 0) - (b.range || 0);
+                    break;
+                case 'speed':
+                    compareValue = (a.speed || 0) - (b.speed || 0);
+                    break;
+                case 'pen':
+                    compareValue = (a.pen || 0) - (b.pen || 0);
+                    break;
+                case 'chip':
+                    compareValue = (a.chip || 0) - (b.chip || 0);
+                    break;
+                case 'requirements':
+                    const aReqs = getWeaponRequirements(a).reduce((sum, req) => sum + req.value, 0);
+                    const bReqs = getWeaponRequirements(b).reduce((sum, req) => sum + req.value, 0);
+                    compareValue = aReqs - bReqs;
+                    break;
+            }
+
+            return sortOrder === 'desc' ? -compareValue : compareValue;
+        });
+    }
+
+    function weaponMatchesFilters(weapon, activeFilters, currentStats) {
+        const wantsAvailable = activeFilters.has('available');
+        const wantsUnavailable = activeFilters.has('unavailable');
+
+        if (wantsAvailable || wantsUnavailable) {
+            const available = isWeaponAvailable(weapon, currentStats);
+
+            if (wantsAvailable && !available) return false;
+            if (wantsUnavailable && available) return false;
+        }
+
+        const statFilters = new Set([...activeFilters].filter(f => f !== 'available' && f !== 'unavailable'));
+
+        if (statFilters.size === 0) return true;
+
+        const requirements = getWeaponRequirements(weapon);
+        const weaponStats = new Set(requirements.map(req => req.stat));
+
+        // Check scaling stats too
+        if (weapon.scaling) {
+            Object.keys(weapon.scaling).forEach(stat => weaponStats.add(stat));
+        }
+
+        for (const filter of statFilters) {
+            if (!weaponStats.has(filter)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function weaponMatchesSearch(weapon, searchTerm) {
+        if (!searchTerm) return true;
+
+        const term = searchTerm.toLowerCase();
+        return (
+            weapon.name.toLowerCase().includes(term) ||
+            (weapon.type && weapon.type.toLowerCase().includes(term)) ||
+            (weapon.damageType && weapon.damageType.toLowerCase().includes(term))
+        );
+    }
+
+    function calculateTotalDamage(weapon, currentStats) {
+        const scaledDamage = calculateScaledDamage(weapon, currentStats);
+        const hasBleed = weapon.damageType && weapon.damageType.toLowerCase().includes('bleed');
+
+        if (hasBleed) {
+            return scaledDamage * 1.15; // Total damage including bleed
+        }
+
+        return scaledDamage;
+    }
+
+    function equipWeapon(weaponId) {
+        const weapon = allWeapons.find(w => w.id === weaponId);
+        if (!weapon) return;
+
+        // Use POST-SHRINE stats only
+        const currentStats = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
+            currentStats[statName] = postValue;
+        });
+
+        const isAvailable = isWeaponAvailable(weapon, currentStats);
+
+        // If already meets requirements, just equip it
+        if (isAvailable) {
+            equippedWeapon = weapon;
+            renderAvailableWeapons();
+            showNotification(`Equipped ${weapon.name}`, 'success');
+            return;
+        }
+
+        // Store pending selection
+        pendingWeaponSelection = weapon;
+
+        // Get requirements from weapon
+        const weaponRequirements = getWeaponRequirements(weapon);
+
+        // NEW: Get requirements from all selected talents
+        const selectedTalentsList = Array.from(selectedTalents)
+            .map(id => allTalents.find(t => t.id === id))
+            .filter(t => t);
+
+        // Build combined requirements (weapon + talents)
+        const combinedRequirements = {};
+
+        // Add weapon requirements (all as POST-SHRINE)
+        weaponRequirements.forEach(req => {
+            if (!combinedRequirements[req.stat]) {
+                combinedRequirements[req.stat] = [];
+            }
+            combinedRequirements[req.stat].push({
+                value: req.value,
+                condition: 'post'
+            });
+        });
+
+        // Add talent requirements (using same logic as talent selection)
+        selectedTalentsList.forEach(talent => {
+            const requirements = getTalentRequirements(talent);
+            if (requirements.length === 0) return;
+
+            requirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+
+                if (requirements.length === 1) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'any'
+                    });
+                } else {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'while',
+                        talentGroup: `talent_${talent.id}`,
+                        allRequirements: requirements
+                    });
+                }
+            });
+        });
+
+        const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
+
+        console.log('Weapon + Talent requirements for optimizer:', deduplicatedRequirements);
+
+        // Calculate optimal build using the SAME system as Point Optimizer
+        if (Object.keys(deduplicatedRequirements).length > 0) {
+            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+            if (optimalBuild) {
+                pendingWeaponOptimalBuild = optimalBuild;
+                showWeaponConfirmationModal(weapon, optimalBuild);
+            } else {
+                showNotification('No optimal build found to equip this weapon.', 'warning');
+                pendingWeaponSelection = null;
+            }
+        }
+    }
+
+    function unequipWeapon() {
+        if (!equippedWeapon) return;
+
+        const weaponName = equippedWeapon.name;
+        equippedWeapon = null;
+        renderAvailableWeapons();
+        showNotification(`Unequipped ${weaponName}`, 'success');
+    }
+
+    function showWeaponConfirmationModal(weapon, optimalBuild) {
+        const modal = document.getElementById('weaponConfirmationModal');
+        const messageEl = document.getElementById('weaponConfirmationMessage');
+        const detailsList = document.getElementById('weaponDetailsList');
+        const buildComparisonSection = document.getElementById('weaponBuildComparisonSection');
+
+        messageEl.textContent = `Equipping "${weapon.name}" requires the following stats:`;
+
+        // Show weapon details
+        const requirements = getWeaponRequirements(weapon);
+        detailsList.innerHTML = '';
+
+        if (requirements.length > 0) {
+            const reqText = requirements.map(r => `${r.stat}: ${r.value}`).join(', ');
+            detailsList.innerHTML = `<div style="padding: 10px; background-color: rgba(255, 255, 255, 0.2);">${reqText}</div>`;
+        }
+
+        // Get current build stats
+        const currentBuild = collectManualBuildStats();
+
+        // Show build comparison
+        buildComparisonSection.innerHTML = '';
+
+        const comparisonDiv = document.createElement('div');
+        comparisonDiv.className = 'build-comparison';
+
+        // Current build column
+        const currentColumn = document.createElement('div');
+        currentColumn.className = 'build-column';
+        currentColumn.innerHTML = '<h3>Current Stats</h3>';
+
+        // Optimal build column
+        const optimalColumn = document.createElement('div');
+        optimalColumn.className = 'build-column';
+        optimalColumn.innerHTML = '<h3>Optimal Stats</h3>';
+
+        // Collect all unique stats
+        const allStats = new Set([
+            ...Object.keys(currentBuild.pre),
+            ...Object.keys(currentBuild.post),
+            ...Object.keys(optimalBuild.preShrine || {}),
+            ...Object.keys(optimalBuild.finalStats || {})
+        ]);
+
+        console.log(optimalBuild)
+
+        allStats.forEach(stat => {
+            const currentPre = currentBuild.pre[stat] || 0;
+            const currentPost = currentBuild.post[stat] || 0;
+
+            const optimalPre = (optimalBuild.preShrine && optimalBuild.preShrine[stat]) ? optimalBuild.preShrine[stat].currentPre : 0;
+            const postShrineValue = optimalBuild.finalStats[stat] || 0;
+            const optimalFinal = optimalBuild.finalStats[stat] || 0;
+
+            // Determine display format
+            let optimalPostDisplay;
+            if (optimalPre > 0) {
+                if (postShrineValue > 0) {
+                    optimalPostDisplay = `${Math.floor(postShrineValue)}`;
+                } else {
+                    optimalPostDisplay = `${optimalFinal}`;
+                }
+            } else {
+                // Stat was NOT in shrine - show full investment
+                optimalPostDisplay = `${optimalFinal}`;
+            }
+
+            // Current build stat
+            const currentStatDiv = document.createElement('div');
+            currentStatDiv.className = 'build-stat-item';
+            currentStatDiv.innerHTML = `
+            <span>${stat}:</span>
+            <span>${currentPre} | ${currentPost}</span>
+        `;
+            currentColumn.appendChild(currentStatDiv);
+
+            // Optimal build stat
+            const optimalStatDiv = document.createElement('div');
+            optimalStatDiv.className = 'build-stat-item';
+            optimalStatDiv.innerHTML = `
+            <span>${stat}:</span>
+            <span>${optimalPre} | ${optimalPostDisplay}</span>
+        `;
+            console.log(stat, optimalPre, optimalPostDisplay, currentBuild)
+
+            optimalColumn.appendChild(optimalStatDiv);
+        });
+
+        comparisonDiv.appendChild(currentColumn);
+        comparisonDiv.appendChild(optimalColumn);
+        buildComparisonSection.appendChild(comparisonDiv);
+
+        modal.classList.add('active');
+    }
+
+    function confirmWeaponEquip() {
+        if (!pendingWeaponSelection) return;
+
+        // Apply optimal build if available
+        if (pendingWeaponOptimalBuild) {
+            applyOptimalBuildToStats(pendingWeaponOptimalBuild);
+        }
+
+        // Equip the weapon
+        equippedWeapon = pendingWeaponSelection;
+
+        // Clear pending data
+        pendingWeaponSelection = null;
+        pendingWeaponOptimalBuild = null;
+
+        // Close modal and re-render
+        document.getElementById('weaponConfirmationModal').classList.remove('active');
+        renderAvailableWeapons();
+
+        showNotification(`Equipped ${equippedWeapon.name}`, 'success');
+    }
+
+    function declineWeaponEquip() {
+        pendingWeaponSelection = null;
+        pendingWeaponOptimalBuild = null;
+        document.getElementById('weaponConfirmationModal').classList.remove('active');
+    }
+
+    function createWeaponCard(weapon) {
+        const card = document.createElement('div');
+        card.className = 'weapon-card';
+        card.dataset.weaponId = weapon.id;
+
+        const requirements = getWeaponRequirements(weapon);
+
+        if (weapon.name === "Metal Greatsword") {
+            console.log("Metal Greatsword requirements:", requirements);
+        }
+
+        const currentStats = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
+            currentStats[statName] = postValue;
+        });
+
+        const isAvailable = isWeaponAvailable(weapon, currentStats);
+
+        if (!isAvailable) {
+            card.classList.add('unavailable');
+        }
+
+        const isEquipped = equippedWeapon && equippedWeapon.id === weapon.id;
+
+        if (isEquipped) {
+            card.classList.add('equipped');
+            card.style.order = '-1'; // Move to top
+        }
+
+        // Build stats grid
+        let statsHTML = '<div class="weapon-stats-grid">';
+
+        if (weapon.damage !== undefined) {
+            const scaledDamage = calculateScaledDamage(weapon, currentStats);
+            const hasScaling = weapon.scaling && Object.keys(weapon.scaling).length > 0 && scaledDamage !== weapon.damage;
+
+            const hasBleed = weapon.damageType && weapon.damageType.toLowerCase().includes('bleed');
+            const bleedDamage = hasBleed ? scaledDamage * 0.15 : 0;
+
+            // If another weapon is equipped, show comparison
+            let damageDisplay;
+            if (equippedWeapon && !isEquipped) {
+                const equippedScaledDamage = calculateScaledDamage(equippedWeapon, currentStats);
+                const equippedBleedDamage = (equippedWeapon.damageType && equippedWeapon.damageType.toLowerCase().includes('bleed'))
+                    ? equippedScaledDamage * 0.15 : 0;
+
+                const equippedTotal = equippedScaledDamage + equippedBleedDamage;
+                const thisTotal = scaledDamage + bleedDamage;
+
+                const diff = thisTotal - equippedTotal;
+                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+
+                damageDisplay = `
+                <span class="weapon-stat-value">
+                    ${weapon.damage}${hasScaling ? ` <span style="color: var(--card-text-secondary); font-size: 0.85em;">(scales to ${scaledDamage.toFixed(1)})</span>` : ''}
+                    ${hasBleed ? ` <span style="color: #dc143c; font-size: 0.85em;">(+${bleedDamage.toFixed(1)} bleed)</span>` : ''}
+                    <br>
+                    <span style="color: ${diffColor}; font-size: 0.9em; font-weight: bold;">${diffSign}${diff.toFixed(1)} vs equipped</span>
+                </span>
+            `;
+            } else {
+                // No comparison, just show normal display
+                damageDisplay = `
+                <span class="weapon-stat-value">
+                    ${weapon.damage}${hasScaling ? ` <span style="color: var(--card-text-secondary); font-size: 0.85em;">(scales to ${scaledDamage.toFixed(1)})</span>` : ''}
+                    ${hasBleed ? ` <span style="color: #dc143c; font-size: 0.85em;">(+${bleedDamage.toFixed(1)} bleed)</span>` : ''}
+                </span>
+            `;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Damage:</span>
+                ${damageDisplay}
+            </div>
+        `;
+        }
+
+        if (weapon.damageType) {
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Type:</span>
+                <span class="weapon-stat-value">${weapon.damageType}</span>
+            </div>
+        `;
+        }
+
+        if (weapon.weight !== undefined) {
+            let weightDisplay;
+            if (equippedWeapon && !isEquipped && equippedWeapon.weight !== undefined) {
+                const diff = weapon.weight - equippedWeapon.weight;
+                const diffColor = diff < 0 ? '#006400' : (diff > 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+                weightDisplay = `${weapon.weight} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(1)})</span>`;
+            } else {
+                weightDisplay = weapon.weight;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Weight:</span>
+                <span class="weapon-stat-value">${weightDisplay}</span>
+            </div>
+        `;
+        }
+
+        if (weapon.range !== undefined) {
+            let rangeDisplay;
+            if (equippedWeapon && !isEquipped && equippedWeapon.range !== undefined) {
+                const diff = weapon.range - equippedWeapon.range;
+                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+                rangeDisplay = `${weapon.range} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(1)})</span>`;
+            } else {
+                rangeDisplay = weapon.range;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Range:</span>
+                <span class="weapon-stat-value">${rangeDisplay}</span>
+            </div>
+        `;
+        }
+
+        if (weapon.speed !== undefined) {
+            let speedDisplay;
+            if (equippedWeapon && !isEquipped && equippedWeapon.speed !== undefined) {
+                const diff = weapon.speed - equippedWeapon.speed;
+                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+                speedDisplay = `${weapon.speed} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
+            } else {
+                speedDisplay = weapon.speed;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Speed:</span>
+                <span class="weapon-stat-value">${speedDisplay}</span>
+            </div>
+        `;
+        }
+
+        if (weapon.pen !== undefined && weapon.pen > 0) {
+            let penDisplay;
+            if (equippedWeapon && !isEquipped && equippedWeapon.pen !== undefined) {
+                const diff = weapon.pen - equippedWeapon.pen;
+                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+                penDisplay = `${weapon.pen} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
+            } else {
+                penDisplay = weapon.pen;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Penetration:</span>
+                <span class="weapon-stat-value">${penDisplay}</span>
+            </div>
+        `;
+        }
+
+        if (weapon.chip !== undefined && weapon.chip > 0) {
+            let chipDisplay;
+            if (equippedWeapon && !isEquipped && equippedWeapon.chip !== undefined) {
+                const diff = weapon.chip - equippedWeapon.chip;
+                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
+                const diffSign = diff > 0 ? '+' : '';
+                chipDisplay = `${weapon.chip} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
+            } else {
+                chipDisplay = weapon.chip;
+            }
+
+            statsHTML += `
+            <div class="weapon-stat-item">
+                <span class="weapon-stat-label">Chip:</span>
+                <span class="weapon-stat-value">${chipDisplay}</span>
+            </div>
+        `;
+        }
+
+        statsHTML += '</div>';
+
+        // Build requirements section
+        let reqsHTML = '';
+        if (requirements.length > 0) {
+            reqsHTML = '<div class="weapon-requirements">';
+            requirements.forEach(req => {
+                let badgeClass = isAvailable ? 'req-badge available' : 'req-badge unavailable';
+                if (req.isPower) {
+                    badgeClass = 'req-badge power-req';
+                }
+                reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
+            });
+            reqsHTML += '</div>';
+        }
+
+        // Build scaling section
+        let scalingHTML = '';
+        if (weapon.scaling && Object.keys(weapon.scaling).length > 0) {
+            // Filter out scaling values that are 0
+            const validScaling = Object.entries(weapon.scaling).filter(([stat, value]) => value > 0);
+
+            if (validScaling.length > 0) {
+                scalingHTML = `
+            <div style="border-top: 1px solid var(--splitter-color); margin-top: 8px; padding-top: 8px;">
+                <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-bottom: 6px; font-weight: 600;">Scaling:</div>
+                <div class="weapon-scaling">
+        `;
+                validScaling.forEach(([stat, value]) => {
+                    scalingHTML += `<span class="scaling-badge">${stat}: ${value}</span>`;
+                });
+                scalingHTML += `
+                </div>
+            </div>
+        `;
+            }
+        }
+
+        const equippedHTML = isEquipped ? '<div class="weapon-equipped-badge">EQUIPPED</div>' : '';
+
+        card.innerHTML = `
+        <div class="weapon-header">
+            <span class="weapon-name">${weapon.name}</span>
+            <span class="weapon-type">${weapon.type || 'Unknown'}</span>
+        </div>
+        ${statsHTML}
+        ${scalingHTML}
+        ${reqsHTML}
+        ${equippedHTML}
+    `;
+
+        card.addEventListener('click', () => {
+            if (isEquipped) {
+                unequipWeapon();
+            } else {
+                equipWeapon(weapon.id);
+            }
+        });
+
+        return card;
+    }
+
+    function renderAvailableWeapons() {
+        const container = document.getElementById('availableWeapons');
+        const searchTerm = document.getElementById('searchWeapons').value;
+
+        // Use POST-SHRINE stats only
+        const currentStats = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
+            currentStats[statName] = postValue;
+        });
+
+        if (allWeapons.length === 0) {
+            container.innerHTML = '<p class="empty-message">No weapons available</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+
+        let visibleCount = 0;
+
+        let weapons = sortWeapons(allWeapons, weaponSortBy, weaponSortOrder);
+
+        weapons.forEach(weapon => {
+            const card = createWeaponCard(weapon);
+
+            const matchesFilter = weaponMatchesFilters(weapon, weaponFilters, currentStats);
+            const matchesSearchTerm = weaponMatchesSearch(weapon, searchTerm);
+
+            if (!matchesFilter || !matchesSearchTerm) {
+                card.classList.add('hidden');
+            } else {
+                visibleCount++;
+            }
+
+            container.appendChild(card);
+        });
+
+        if (visibleCount === 0) {
+            container.innerHTML = '<p class="empty-message">No weapons match your filters</p>';
+        }
+    }
+
+    // Setup weapon filter buttons
+    function setupWeaponFilterButtons() {
+        const container = document.getElementById('weaponFilters');
+        const filterButtons = container.querySelectorAll('.filter-btn:not(.clear-filters)');
+        const clearButton = container.querySelector('.clear-filters');
+
+        filterButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const filter = button.getAttribute('data-filter');
+
+                if (weaponFilters.has(filter)) {
+                    weaponFilters.delete(filter);
+                    button.classList.remove('active');
+                } else {
+                    weaponFilters.add(filter);
+                    button.classList.add('active');
+                }
+
+                renderAvailableWeapons();
+            });
+        });
+
+        clearButton.addEventListener('click', () => {
+            weaponFilters.clear();
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            renderAvailableWeapons();
+        });
+    }
+
 
     document.getElementById('clearAllTalents')?.addEventListener('click', () => {
         if (selectedTalents.size === 0) return;
@@ -1394,7 +2154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return resolvedRequirements;
     }
 
-    // Add this new function to get all requirements including prerequisites (for stat order only)
+
     function getAllRequirementsForStatOrder(talent) {
         const allReqs = [];
         const seen = new Map(); // Track highest value for each stat
@@ -1437,7 +2197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // Add this helper function
+
     function getPrerequisiteTalents(talent, visited = new Set()) {
         const prerequisites = [];
 
@@ -1581,71 +2341,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-   function createTalentCard(talent, isSelected = false) {
-    const card = document.createElement('div');
-    card.className = 'talent-card';
-    card.dataset.talentId = talent.id;
+    function createTalentCard(talent, isSelected = false) {
+        const card = document.createElement('div');
+        card.className = 'talent-card';
+        card.dataset.talentId = talent.id;
+        // Use ORIGINAL requirements for display (shows Body/Mind as-is)
+        const requirements = getTalentRequirements(talent);
 
-    // Use ORIGINAL requirements for display (shows Body/Mind as-is)
-    const requirements = getTalentRequirements(talent);
+        // Check if this talent has conflicts with any selected talents
+        const conflictingTalents = [];
+        if (talent.exclusiveWith && talent.exclusiveWith.length > 0) {
+            talent.exclusiveWith.forEach(exclusiveName => {
+                if (!exclusiveName || exclusiveName === '') return;
+                const exclusiveTalent = findTalentByName(exclusiveName);
+                if (exclusiveTalent && selectedTalents.has(exclusiveTalent.id)) {
+                    conflictingTalents.push(exclusiveName);
+                }
+            });
+        }
 
-    // Check if this talent has conflicts with any selected talents
-    const conflictingTalents = [];
-    if (talent.exclusiveWith && talent.exclusiveWith.length > 0) {
-        talent.exclusiveWith.forEach(exclusiveName => {
-            if (!exclusiveName || exclusiveName === '') return;
-            const exclusiveTalent = findTalentByName(exclusiveName);
-            if (exclusiveTalent && selectedTalents.has(exclusiveTalent.id)) {
-                conflictingTalents.push(exclusiveName);
-            }
-        });
-    }
+        const hasExclusiveConflict = conflictingTalents.length > 0;
 
-    const hasExclusiveConflict = conflictingTalents.length > 0;
+        if (hasExclusiveConflict) {
+            card.classList.add('exclusive-conflict');
+        }
 
-    if (hasExclusiveConflict) {
-        card.classList.add('exclusive-conflict');
-    }
+        let fromHTML = '';
+        if (talent.reqs && talent.reqs.from) {
+            fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
+        }
 
-    let fromHTML = '';
-    if (talent.reqs && talent.reqs.from) {
-        fromHTML = `<div class="talent-from">From: ${talent.reqs.from}</div>`;
-    }
+        let statsHTML = '';
+        if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
+            statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
+        }
 
-    let statsHTML = '';
-    if (talent.stats && talent.stats !== 'N/A' && talent.stats.trim() !== '') {
-        statsHTML = `<div class="talent-stats">${talent.stats}</div>`;
-    }
+        let exclusiveHTML = '';
+        if (hasExclusiveConflict) {
+            const exclusivesList = conflictingTalents.join(', ');
+            exclusiveHTML = `<div class="talent-exclusive">Conflicts with: ${exclusivesList}</div>`;
+        }
 
-    let exclusiveHTML = '';
-    if (hasExclusiveConflict) {
-        const exclusivesList = conflictingTalents.join(', ');
-        exclusiveHTML = `<div class="talent-exclusive">Conflicts with: ${exclusivesList}</div>`;
-    }
+        let reqsHTML = '';
+        if (requirements.length > 0) {
+            reqsHTML = '<div class="talent-requirements">';
+            requirements.forEach(req => {
+                // Add special styling for different requirement types
+                let badgeClass = 'req-badge';
 
-    let reqsHTML = '';
-    if (requirements.length > 0) {
-        reqsHTML = '<div class="talent-requirements">';
-        requirements.forEach(req => {
-            // Add special styling for different requirement types
-            let badgeClass = 'req-badge';
-            
-            if (req.isPower) {
-                // Special class for power requirements
-                badgeClass = 'req-badge power-req';
-            } else if (req.stat === 'Body' || req.stat === 'Mind') {
-                // Derived stats
-                badgeClass = 'req-badge derived-stat';
-            }
-            
-            reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
-        });
-        reqsHTML += '</div>';
-    }
+                if (req.isPower) {
+                    // Special class for power requirements
+                    badgeClass = 'req-badge power-req';
+                } else if (req.stat === 'Body' || req.stat === 'Mind') {
+                    // Derived stats
+                    badgeClass = 'req-badge derived-stat';
+                }
 
-    const nameClass = hasExclusiveConflict ? 'talent-name conflict' : 'talent-name';
+                reqsHTML += `<span class="${badgeClass}">${req.stat}: ${req.value}</span>`;
+            });
+            reqsHTML += '</div>';
+        }
 
-    card.innerHTML = `
+        const nameClass = hasExclusiveConflict ? 'talent-name conflict' : 'talent-name';
+
+        card.innerHTML = `
         <div class="talent-header">
             <span class="${nameClass}">${talent.name}</span>
             <span class="talent-rarity">${talent.rarity || 'Common'}</span>
@@ -1657,26 +2416,23 @@ document.addEventListener('DOMContentLoaded', () => {
         ${reqsHTML}
     `;
 
-    card.addEventListener('click', () => {
-        if (isSelected) {
-            unselectTalent(talent.id);
-        } else {
-            selectTalent(talent.id);
-        }
-    });
+        card.addEventListener('click', () => {
+            if (isSelected) {
+                unselectTalent(talent.id);
+            } else {
+                selectTalent(talent.id);
+            }
+        });
 
-    return card;
-}
-
-
+        return card;
+    }
 
 
-    // Add this new function to find a talent by name
     function findTalentByName(talentName) {
         return allTalents.find(t => t.name.toLowerCase() === talentName.toLowerCase());
     }
 
-    // Add this new function to get required talent names
+
     function getRequiredTalentNames(talent) {
         const requiredTalents = [];
 
@@ -1702,7 +2458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return requiredTalents;
     }
 
-    // Add this new recursive function to select talent and its dependencies
+
     function selectTalentWithDependencies(talentId, visited = new Set()) {
         // Prevent infinite loops
         if (visited.has(talentId)) {
@@ -1791,6 +2547,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const allTalentsToConsider = [...allSelectedTalents, ...newTalents];
 
         const combinedRequirements = {};
+
+        // NEW: Add weapon requirements if a weapon is equipped
+        if (equippedWeapon) {
+            const weaponRequirements = getWeaponRequirements(equippedWeapon);
+            weaponRequirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+                // Weapon requirements are always POST-SHRINE
+                combinedRequirements[req.stat].push({
+                    value: req.value,
+                    condition: 'post'
+                });
+            });
+        }
 
         // First pass - collect all explicit stat requirements
         const explicitStatRequirements = new Map();
@@ -1977,7 +2748,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Add this function after collectDependencies
     function deduplicateRequirements(requirements) {
         const deduplicated = {};
 
@@ -1987,6 +2757,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Group by condition type
             const anyReqs = reqs.filter(r => r.condition === 'any');
             const whileReqs = reqs.filter(r => r.condition === 'while');
+            // FIX: Add filters for pre and post
+            const preReqs = reqs.filter(r => r.condition === 'pre');
+            const postReqs = reqs.filter(r => r.condition === 'post');
 
             // For ANY requirements, only keep the maximum value
             if (anyReqs.length > 0) {
@@ -2005,8 +2778,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     whileGroups[group] = req;
                 }
             });
-
             deduplicated[statName].push(...Object.values(whileGroups));
+
+            // FIX: Pass through PRE requirements (keeping max value)
+            if (preReqs.length > 0) {
+                const maxPre = Math.max(...preReqs.map(r => r.value));
+                deduplicated[statName].push({
+                    value: maxPre,
+                    condition: 'pre'
+                });
+            }
+
+            // FIX: Pass through POST requirements (keeping max value)
+            if (postReqs.length > 0) {
+                const maxPost = Math.max(...postReqs.map(r => r.value));
+                deduplicated[statName].push({
+                    value: maxPost,
+                    condition: 'post'
+                });
+            }
         }
 
         return deduplicated;
@@ -2277,7 +3067,7 @@ document.addEventListener('DOMContentLoaded', () => {
         proceedWithTalentRemoval(talentId);
     }
 
-    // Add this new function to handle the actual removal
+
     function proceedWithTalentRemoval(talentId) {
         // Remove the talent
         selectedTalents.delete(talentId);
@@ -2292,7 +3082,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(`Removed "${removedTalent.name}" from your build`, 'success');
     }
 
-    // Add this new function to recalculate the build
+
     function recalculateBuildForRemainingTalents() {
         // If no talents selected, clear the build
         if (selectedTalents.size === 0) {
@@ -2952,7 +3742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = html;
     }
 
-    // Add this new function to merge consecutive steps
+
     function mergeConsecutiveSteps(steps) {
         if (steps.length === 0) return [];
 
@@ -3094,6 +3884,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#stats-tab .simple-input').forEach(input => {
         input.addEventListener('input', () => {
             updateSparePoints();
+        });
+
+        input.addEventListener('input', () => {
+            // Only re-render if we're on the weapons tab
+            const weaponsTab = document.getElementById('weapons-tab');
+            if (weaponsTab.classList.contains('active')) {
+                renderAvailableWeapons();
+            }
+        });
+
+        input.addEventListener('blur', () => {
+            // Also re-render on blur (when user finishes editing)
+            const weaponsTab = document.getElementById('weapons-tab');
+            if (weaponsTab.classList.contains('active')) {
+                renderAvailableWeapons();
+            }
         });
     });
 
@@ -3238,8 +4044,39 @@ document.addEventListener('DOMContentLoaded', () => {
         window.pendingRequirements = null;
     }
 
+    document.getElementById('searchWeapons')?.addEventListener('input', () => {
+        renderAvailableWeapons();
+    });
+
+    // Setup weapon sort controls
+    document.getElementById('weaponSortBy')?.addEventListener('change', (e) => {
+        weaponSortBy = e.target.value;
+        renderAvailableWeapons();
+    });
+
+    document.getElementById('weaponSortOrder')?.addEventListener('change', (e) => {
+        weaponSortOrder = e.target.value;
+        renderAvailableWeapons();
+    });
+
+
+    document.getElementById('confirmWeaponBtn')?.addEventListener('click', confirmWeaponEquip);
+    document.getElementById('declineWeaponBtn')?.addEventListener('click', declineWeaponEquip);
+
+    // Close modal when clicking outside
+    document.getElementById('weaponConfirmationModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'weaponConfirmationModal') {
+            declineWeaponEquip();
+        }
+    });
+
+    // Initialize weapons tab
+    setupWeaponFilterButtons();
+
+
     // Initialize talents tab
     setupFilterButtons('availableFilters', availableFilters);
     setupFilterButtons('selectedFilters', selectedFilters);
     loadTalents();
+    loadWeapons();
 });

@@ -15,6 +15,7 @@
         <button class="tab-btn active" data-tab="stats">Build</button>
         <button class="tab-btn" data-tab="optimizer">Point Optimizer</button>
         <button class="tab-btn" data-tab="talents">Talents</button>
+        <button class="tab-btn" data-tab="weapons">Weapon</button>
         <button class="tab-btn" data-tab="statorder">Stat Order</button>
         <button class="tab-btn" data-tab="recommendations">Recommendations</button>
     </div>
@@ -664,11 +665,78 @@
         </div>
     </div>
 
+    <div class="tab-content" id="weapons-tab">
+        <div class="weapons-main-container">
+            <!-- Weapons Panel -->
+            <div class="weapons-panel">
+                <div class="panel-header">
+                    <h3>Available Weapons</h3>
+                    <div class="search-bar">
+                        <input type="text" id="searchWeapons" placeholder="Search weapons..." />
+                    </div>
+
+                    <!-- Sort Controls -->
+                    <div class="sort-controls">
+                        <label>Sort by:</label>
+                        <select id="weaponSortBy">
+                            <option value="name">Name</option>
+                            <option value="damage">Damage</option>
+                            <option value="scaledDamage" selected>Scaled Damage</option>
+                            <option value="weight">Weight</option>
+                            <option value="range">Range</option>
+                            <option value="speed">Speed</option>
+                            <option value="pen">Penetration</option>
+                            <option value="chip">Chip</option>
+                            <option value="requirements">Total Requirements</option>
+                        </select>
+                        <select id="weaponSortOrder">
+                            <option value="asc">Ascending</option>
+                            <option value="desc" selected>Descending</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Buttons -->
+                    <div class="filter-buttons" id="weaponFilters">
+                        <button class="filter-btn availability-btn" data-filter="available">Available</button>
+                        <button class="filter-btn availability-btn" data-filter="unavailable">Unavailable</button>
+                        <button class="filter-btn" data-filter="Strength">Strength</button>
+                        <button class="filter-btn" data-filter="Fortitude">Fortitude</button>
+                        <button class="filter-btn" data-filter="Agility">Agility</button>
+                        <button class="filter-btn" data-filter="Intelligence">Intelligence</button>
+                        <button class="filter-btn" data-filter="Willpower">Willpower</button>
+                        <button class="filter-btn" data-filter="Charisma">Charisma</button>
+                        <button class="filter-btn" data-filter="Heavy Wep.">Heavy</button>
+                        <button class="filter-btn" data-filter="Medium Wep.">Medium</button>
+                        <button class="filter-btn" data-filter="Light Wep.">Light</button>
+                        <button class="filter-btn" data-filter="Flamecharm">Flame</button>
+                        <button class="filter-btn" data-filter="Frostdraw">Frostdraw</button>
+                        <button class="filter-btn" data-filter="Thundercall">Thundercall</button>
+                        <button class="filter-btn" data-filter="Galebreathe">Galebreathe</button>
+                        <button class="filter-btn" data-filter="Shadowcast">Shadowcast</button>
+                        <button class="filter-btn" data-filter="Ironsing">Ironsing</button>
+                        <button class="filter-btn" data-filter="Bloodrend">Bloodrend</button>
+                        <button class="filter-btn clear-filters">Clear</button>
+                    </div>
+                </div>
+                <div class="weapons-list" id="availableWeapons">
+                    <p class="loading-message">Loading weapons...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Recommendations Tab Content -->
     <div class="tab-content" id="recommendations-tab">
         <div class="recommendations-container">
-            <h2>Recommendations</h2>
-            <p>Recommendations content coming soon...</p>
+            <h2>Talent Recommendations</h2>
+            <p class="recommendations-description">Browse talents by effect type to find abilities that match your
+                playstyle.</p>
+
+
+            <div class="recommendations-content">
+                <!-- Categories will be dynamically generated here -->
+                <div id="categoriesContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -737,6 +805,27 @@
             <div class="talent-confirmation-footer">
                 <button class="confirm-btn" id="confirmClearBtn">Clear All</button>
                 <button class="decline-btn" id="declineClearBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="weaponConfirmationModal" class="talent-confirmation-modal">
+        <div class="talent-confirmation-content">
+            <div class="talent-confirmation-header">
+                <h2>Equip Weapon?</h2>
+                <p id="weaponConfirmationMessage"></p>
+            </div>
+            <div class="talent-confirmation-body">
+                <div class="talent-list-section" id="weaponInfoSection">
+                    <h3>Weapon Details</h3>
+                    <div id="weaponDetailsList"></div>
+                </div>
+
+                <div id="weaponBuildComparisonSection"></div>
+            </div>
+            <div class="talent-confirmation-footer">
+                <button class="confirm-btn" id="confirmWeaponBtn">Equip Weapon</button>
+                <button class="decline-btn" id="declineWeaponBtn">Cancel</button>
             </div>
         </div>
     </div>

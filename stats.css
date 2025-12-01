@@ -1590,3 +1590,424 @@ input[type="number"] {
     color: #4682b4;
 }
 
+/* Recommendations Tab Styles */
+.recommendations-container {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    padding: 30px;
+    width: 100%;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.recommendations-container h2 {
+    margin: 0 0 10px 0;
+    color: var(--card-text-primary);
+    text-align: center;
+}
+
+.recommendations-description {
+    text-align: center;
+    color: var(--card-text-secondary);
+    margin: 0 0 30px 0;
+}
+
+.recommendations-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Scrollbar styling for recommendations container */
+.recommendations-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.recommendations-container::-webkit-scrollbar-track {
+    background: var(--input-background);
+}
+
+.recommendations-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 0;
+}
+
+.recommendations-container::-webkit-scrollbar-thumb:hover {
+    background: var(--card-text-primary);
+}
+
+.category-section {
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+    border: 1px solid var(--border-color);
+}
+
+.category-header:hover {
+    background-color: var(--button-hover);
+}
+
+.category-header:active {
+    background-color: var(--button-active);
+}
+
+.category-header h3 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-transform: uppercase;
+}
+
+.category-icon {
+    font-size: 1.2em;
+}
+
+.category-count {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 10px;
+    border-radius: 0;
+    font-size: 0.85em;
+    font-weight: bold;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.category-toggle {
+    font-size: 1.2em;
+    transition: transform 0.3s;
+    line-height: 1;
+}
+
+.category-section.expanded .category-toggle {
+    transform: rotate(180deg);
+}
+
+.category-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.category-section.expanded .category-body {
+    max-height: 3000px;
+    transition: max-height 0.5s ease-in;
+}
+
+.category-talents {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+.recommendation-card {
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+    padding: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.recommendation-card:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: var(--card-text-primary);
+}
+
+.recommendation-card:active {
+    transform: scale(0.98);
+}
+
+.recommendation-card.selected {
+    background-color: rgba(0, 100, 0, 0.15);
+    border-left: 4px solid #006400;
+    border-color: #006400;
+}
+
+.recommendation-card.unavailable {
+    opacity: 0.6;
+}
+
+.recommendation-card.unavailable:hover {
+    background-color: var(--input-background);
+    border-color: var(--border-color);
+    cursor: default;
+}
+
+.recommendation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.recommendation-name {
+    font-weight: bold;
+    color: var(--card-text-primary);
+    font-size: 1.05em;
+}
+
+.recommendation-rarity {
+    font-size: 0.85em;
+    color: var(--card-text-secondary);
+    font-style: italic;
+}
+
+.recommendation-desc {
+    color: var(--card-text-primary);
+    font-size: 0.9em;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.recommendation-from {
+    color: var(--card-text-secondary);
+    font-size: 0.85em;
+    font-style: italic;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-left: 3px solid var(--border-color);
+}
+
+.recommendation-requirements {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--splitter-color);
+}
+
+.empty-category {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--card-text-secondary);
+    font-style: italic;
+}
+
+.recommendation-stats {
+    color: var(--card-text-secondary);
+    font-size: 0.85em;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background-color: rgba(255, 255, 255, 0.15);
+    border-left: 3px solid var(--splitter-color);
+}
+/* Recommendation Toggles */
+.recommendation-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+}
+
+.toggle-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.toggle-chip:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: var(--card-text-primary);
+}
+
+.toggle-chip:active {
+    transform: scale(0.95);
+}
+
+.toggle-chip.active {
+    background-color: var(--button-background);
+    color: var(--button-textcolor);
+    border-color: var(--button-background);
+}
+
+.toggle-chip input[type="checkbox"] {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--button-background);
+}
+
+/* Weapons Tab Styles */
+.weapons-main-container {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    max-width: 1400px;
+    height: 80vh;
+}
+
+.weapons-panel {
+    flex: 1;
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 80vh;
+}
+
+.weapons-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;  /* ADD THIS */
+    flex-direction: column;  /* ADD THIS */
+}
+
+.weapons-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.weapons-list::-webkit-scrollbar-track {
+    background: var(--input-background);
+}
+
+.weapons-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 0;
+}
+
+.weapons-list::-webkit-scrollbar-thumb:hover {
+    background: var(--card-text-primary);
+}
+
+.weapon-card {
+    background-color: var(--input-background);
+    border: 1px solid var(--border-color);
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.weapon-card:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: var(--card-text-primary);
+}
+
+.weapon-card.hidden {
+    display: none;
+}
+
+.weapon-card.unavailable {
+    opacity: 0.6;
+}
+
+.weapon-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.weapon-name {
+    font-weight: bold;
+    color: var(--card-text-primary);
+    font-size: 1.05em;
+}
+
+.weapon-type {
+    font-size: 0.85em;
+    color: var(--card-text-secondary);
+    font-style: italic;
+}
+
+.weapon-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.weapon-stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background-color: rgba(255, 255, 255, 0.2);
+    font-size: 0.85em;
+}
+
+.weapon-stat-label {
+    color: var(--card-text-secondary);
+}
+
+.weapon-stat-value {
+    color: var(--card-text-primary);
+    font-weight: 600;
+}
+
+.weapon-requirements {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--splitter-color);
+}
+
+.weapon-scaling {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--splitter-color);
+}
+
+.scaling-badge {
+    background-color: #4a5568;
+    color: white;
+    padding: 3px 8px;
+    font-size: 0.75em;
+    font-weight: bold;
+    border-radius: 0;
+}
+
+.weapon-card.equipped {
+    border: 2px solid #006400;
+    background-color: rgba(0, 100, 0, 0.1);
+}
+
+.weapon-equipped-badge {
+    background-color: #006400;
+    color: white;
+    padding: 4px 8px;
+    font-size: 0.75em;
+    text-align: center;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.weapon-card {
+    cursor: pointer;
+}
