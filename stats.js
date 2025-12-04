@@ -304,6 +304,130 @@ document.addEventListener('DOMContentLoaded', () => {
         setupInputValidation(input);
     });
 
+    function isOathTalent(talent) {
+        return talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+    }
+
+    function getCurrentOath() {
+        for (const talentId of selectedTalents) {
+            const talent = allTalents.find(t => t.id === talentId);
+            if (talent && isOathTalent(talent) && talent.rarity === 'Oath') {
+                return talent;
+            }
+        }
+        return null;
+    }
+
+    function getTalentsDependingOnOath(oathTalent) {
+        const dependentTalents = [];
+
+        for (const talentId of selectedTalents) {
+            const talent = allTalents.find(t => t.id === talentId);
+            if (!talent || talent.id === oathTalent.id) continue;
+
+            const requiredNames = getRequiredTalentNames(talent);
+            if (requiredNames.includes(oathTalent.name)) {
+                dependentTalents.push(talent);
+            }
+        }
+
+        return dependentTalents;
+    }
+
+
+    function showOathSwapModal(currentOath, newOath) {
+        const modal = document.getElementById('oathSwapModal');
+        const messageEl = document.getElementById('oathSwapMessage');
+        const comparisonContainer = document.getElementById('oathComparisonCards');
+
+        // Store the oaths for later use
+        window.pendingOathSwap = {
+            current: currentOath,
+            new: newOath
+        };
+
+        // Get talents that depend on current oath
+        const dependentTalents = getTalentsDependingOnOath(currentOath);
+
+        if (dependentTalents.length > 0) {
+            messageEl.innerHTML = `
+            <p>You already have <strong>${currentOath.name}</strong>. Switching to <strong>${newOath.name}</strong> will also remove the following talents:</p>
+            <div style="background-color: rgba(220, 20, 60, 0.2); border-left: 3px solid #dc143c; padding: 10px; margin: 10px 0;">
+                ${dependentTalents.map(t => `<div>• ${t.name}</div>`).join('')}
+            </div>
+        `;
+        } else {
+            messageEl.innerHTML = `
+            <p>You already have <strong>${currentOath.name}</strong>. Do you want to switch to <strong>${newOath.name}</strong>?</p>
+        `;
+        }
+
+        // Build comparison cards
+        comparisonContainer.innerHTML = '';
+
+        // Current oath card
+        const currentCard = document.createElement('div');
+        currentCard.className = 'weapon-comparison-card';
+        currentCard.innerHTML = `
+        <h3>Current Oath</h3>
+        ${createOathComparisonHTML(currentOath, dependentTalents)}
+    `;
+        comparisonContainer.appendChild(currentCard);
+
+        // New oath card
+        const newCard = document.createElement('div');
+        newCard.className = 'weapon-comparison-card';
+        newCard.innerHTML = `
+        <h3>New Oath</h3>
+        ${createOathComparisonHTML(newOath, [])}
+    `;
+        comparisonContainer.appendChild(newCard);
+
+        modal.classList.add('active');
+    }
+
+    function createOathComparisonHTML(oath, dependentTalents) {
+        const requirements = getTalentRequirements(oath);
+
+        let html = `
+        <div style="margin-bottom: 12px;">
+            <strong style="font-size: 1.1em;">${oath.name}</strong>
+        </div>
+        <div style="margin-bottom: 12px; color: var(--card-text-secondary); font-size: 0.9em;">
+            ${oath.desc || 'No description available'}
+        </div>
+    `;
+
+        if (requirements.length > 0) {
+            const displayRequirements = requirements.filter(r => !r.isPower);
+            if (displayRequirements.length > 0) {
+                html += `
+                <div style="border-top: 1px solid var(--splitter-color); padding-top: 8px; margin-top: 8px;">
+                    <span style="color: var(--card-text-secondary); font-size: 0.85em; display: block; margin-bottom: 6px;">Requirements:</span>
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                        ${displayRequirements.map(req =>
+                    `<span class="req-badge">${req.stat}: ${req.value}</span>`
+                ).join('')}
+                    </div>
+                </div>
+            `;
+            }
+        }
+
+        if (dependentTalents.length > 0) {
+            html += `
+            <div style="border-top: 1px solid var(--splitter-color); padding-top: 8px; margin-top: 8px;">
+                <span style="color: var(--card-text-secondary); font-size: 0.85em; display: block; margin-bottom: 6px;">Unlocked Talents:</span>
+                <div style="color: var(--card-text-primary); font-size: 0.9em;">
+                    ${dependentTalents.map(t => `<div>• ${t.name}</div>`).join('')}
+                </div>
+            </div>
+        `;
+        }
+
+        return html;
+    }
+
     const handleConditionChange = (event) => {
         const select = event.target;
         const inputGroup = select.closest('.input-group');
@@ -1250,7 +1374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingTalentSelection = null;
     let pendingOptimalBuild = null;
 
-    let equippedWeapon = null;
+    let equippedWeapons = [];
     let pendingWeaponSelection = null;
     let pendingWeaponOptimalBuild = null;
 
@@ -1312,7 +1436,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (weapon.reqs) {
             if (weapon.reqs.base) {
                 for (const [stat, value] of Object.entries(weapon.reqs.base)) {
-                    if (value > 0 && stat !== 'Body' && stat !== 'Mind') {
+                    // Include ALL base stats, including Body and Mind
+                    if (value > 0) {
                         reqs.push({ stat, value });
                     }
                 }
@@ -1489,6 +1614,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const weapon = allWeapons.find(w => w.id === weaponId);
         if (!weapon) return;
 
+        // Check if weapon is already equipped
+        if (equippedWeapons.some(w => w.id === weaponId)) {
+            // Weapon is equipped, so unequip it
+            unequipWeapon(weaponId);
+            return;
+        }
+
         // Use POST-SHRINE stats only
         const currentStats = {};
         document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
@@ -1502,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // If already meets requirements, just equip it
         if (isAvailable) {
-            equippedWeapon = weapon;
+            equippedWeapons.push(weapon);
             renderAvailableWeapons();
             showNotification(`Equipped ${weapon.name}`, 'success');
             return;
@@ -1514,15 +1646,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get requirements from weapon
         const weaponRequirements = getWeaponRequirements(weapon);
 
-        // NEW: Get requirements from all selected talents
+        // Get requirements from all selected talents
         const selectedTalentsList = Array.from(selectedTalents)
             .map(id => allTalents.find(t => t.id === id))
             .filter(t => t);
 
-        // Build combined requirements (weapon + talents)
+        // Get requirements from ALL equipped weapons
+        const allEquippedWeaponRequirements = [];
+        equippedWeapons.forEach(equippedWeapon => {
+            const reqs = getWeaponRequirements(equippedWeapon);
+            allEquippedWeaponRequirements.push(...reqs);
+        });
+
+        // Build combined requirements (new weapon + equipped weapons + talents)
         const combinedRequirements = {};
 
-        // Add weapon requirements (all as POST-SHRINE)
+        // Add new weapon requirements (all as POST-SHRINE)
         weaponRequirements.forEach(req => {
             if (!combinedRequirements[req.stat]) {
                 combinedRequirements[req.stat] = [];
@@ -1533,7 +1672,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Add talent requirements (using same logic as talent selection)
+        // Add equipped weapon requirements (all as POST-SHRINE)
+        allEquippedWeaponRequirements.forEach(req => {
+            if (!combinedRequirements[req.stat]) {
+                combinedRequirements[req.stat] = [];
+            }
+            combinedRequirements[req.stat].push({
+                value: req.value,
+                condition: 'post'
+            });
+        });
+
+        // Add talent requirements
         selectedTalentsList.forEach(talent => {
             const requirements = getTalentRequirements(talent);
             if (requirements.length === 0) return;
@@ -1559,13 +1709,28 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+
+
+
         const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
-        console.log('Weapon + Talent requirements for optimizer:', deduplicatedRequirements);
+        console.log('Weapon + Equipped Weapons + Talent requirements for optimizer:', deduplicatedRequirements);
 
-        // Calculate optimal build using the SAME system as Point Optimizer
         if (Object.keys(deduplicatedRequirements).length > 0) {
+            // Reset derived stat choices only if we're starting fresh
+            if (!window.selectedDerivedStats) {
+                window.selectedDerivedStats = {};
+            }
+
             const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+            // Check if we need user input for derived stats
+            if (optimalBuild === null && window.pendingDerivedStatChoices && window.pendingDerivedStatChoices.length > 0) {
+                showDerivedStatSelectionModal(window.pendingDerivedStatChoices);
+                window.pendingRequirements = deduplicatedRequirements;
+                window.pendingWeaponEquip = true; // Flag to indicate this is for weapon equip
+                return;
+            }
 
             if (optimalBuild) {
                 pendingWeaponOptimalBuild = optimalBuild;
@@ -1577,13 +1742,317 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function unequipWeapon() {
-        if (!equippedWeapon) return;
+    function showWeaponSwapModal(newWeapon, isAvailable) {
+        const modal = document.getElementById('weaponSwapModal');
+        const comparisonContainer = document.getElementById('weaponComparisonCards');
 
-        const weaponName = equippedWeapon.name;
-        equippedWeapon = null;
+        // Store the new weapon for later use
+        window.pendingSwapWeapon = newWeapon;
+
+        // Get current stats for damage calculations
+        const currentStats = {};
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const postInput = row.querySelector('.post-shrine');
+            const postValue = parseInt(postInput.value) || 0;
+            currentStats[statName] = postValue;
+        });
+
+        // Build comparison cards
+        comparisonContainer.innerHTML = '';
+
+        // Current weapon card
+        const currentCard = document.createElement('div');
+        currentCard.className = 'weapon-comparison-card';
+        currentCard.innerHTML = `
+        <h3>Currently Equipped</h3>
+        ${createWeaponComparisonHTML(equippedWeapon, currentStats)}
+    `;
+        comparisonContainer.appendChild(currentCard);
+
+        // New weapon card
+        const newCard = document.createElement('div');
+        newCard.className = 'weapon-comparison-card';
+        newCard.innerHTML = `
+        <h3>New Weapon</h3>
+        ${createWeaponComparisonHTML(newWeapon, currentStats)}
+        ${!isAvailable ? '<p style="color: #dc143c; margin-top: 10px; font-size: 0.9em;">⚠ Requirements not met</p>' : ''}
+    `;
+        comparisonContainer.appendChild(newCard);
+
+        modal.classList.add('active');
+    }
+
+    function createWeaponComparisonHTML(weapon, currentStats) {
+        const scaledDamage = calculateScaledDamage(weapon, currentStats);
+        const totalDamage = calculateTotalDamage(weapon, currentStats);
+        const requirements = getWeaponRequirements(weapon);
+
+        let html = `
+        <div style="margin-bottom: 12px;">
+            <strong style="font-size: 1.1em;">${weapon.name}</strong>
+            <span style="display: block; color: var(--card-text-secondary); font-size: 0.85em; margin-top: 4px;">${weapon.type || 'Unknown'}</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+            <div>
+                <span style="color: var(--card-text-secondary); font-size: 0.85em;">Base Damage:</span>
+                <div style="font-weight: bold;">${weapon.damage || 0}</div>
+            </div>
+            <div>
+                <span style="color: var(--card-text-secondary); font-size: 0.85em;">Scaled Damage:</span>
+                <div style="font-weight: bold; color: #006400;">${scaledDamage.toFixed(1)}</div>
+            </div>
+            <div>
+                <span style="color: var(--card-text-secondary); font-size: 0.85em;">Total Damage:</span>
+                <div style="font-weight: bold; color: #006400;">${totalDamage.toFixed(1)}</div>
+            </div>
+            <div>
+                <span style="color: var(--card-text-secondary); font-size: 0.85em;">Weight:</span>
+                <div style="font-weight: bold;">${weapon.weight || 0}</div>
+            </div>
+        </div>
+    `;
+
+        if (requirements.length > 0) {
+            html += `
+            <div style="border-top: 1px solid var(--splitter-color); padding-top: 8px; margin-top: 8px;">
+                <span style="color: var(--card-text-secondary); font-size: 0.85em; display: block; margin-bottom: 6px;">Requirements:</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${requirements.map(req =>
+                `<span class="req-badge">${req.stat}: ${req.value}</span>`
+            ).join('')}
+                </div>
+            </div>
+        `;
+        }
+
+        return html;
+    }
+
+    document.getElementById('swapWeaponBtn')?.addEventListener('click', () => {
+        if (window.pendingSwapWeapon) {
+            // Replace current weapon with new weapon
+            const newWeapon = window.pendingSwapWeapon;
+
+            const currentStats = {};
+            document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                const statName = row.getAttribute('data-stat');
+                const postInput = row.querySelector('.post-shrine');
+                const postValue = parseInt(postInput.value) || 0;
+                currentStats[statName] = postValue;
+            });
+
+            const isAvailable = isWeaponAvailable(newWeapon, currentStats);
+
+            if (isAvailable) {
+                equippedWeapon = newWeapon;
+                renderAvailableWeapons();
+                showNotification(`Swapped to ${newWeapon.name}`, 'success');
+                document.getElementById('weaponSwapModal').classList.remove('active');
+                window.pendingSwapWeapon = null;
+            } else {
+                // Close swap modal and proceed with optimization flow
+                document.getElementById('weaponSwapModal').classList.remove('active');
+                pendingWeaponSelection = newWeapon;
+
+                // Same optimization logic as before
+                const weaponRequirements = getWeaponRequirements(newWeapon);
+                const selectedTalentsList = Array.from(selectedTalents)
+                    .map(id => allTalents.find(t => t.id === id))
+                    .filter(t => t);
+
+                const combinedRequirements = {};
+
+                weaponRequirements.forEach(req => {
+                    if (!combinedRequirements[req.stat]) {
+                        combinedRequirements[req.stat] = [];
+                    }
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'post'
+                    });
+                });
+
+                selectedTalentsList.forEach(talent => {
+                    const requirements = getTalentRequirements(talent);
+                    if (requirements.length === 0) return;
+
+                    // Check if this is an Oath talent
+                    const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+
+                    requirements.forEach(req => {
+                        if (!combinedRequirements[req.stat]) {
+                            combinedRequirements[req.stat] = [];
+                        }
+
+                        // Oath talents always use POST-SHRINE
+                        if (isOathTalent) {
+                            combinedRequirements[req.stat].push({
+                                value: req.value,
+                                condition: 'post'
+                            });
+                        } else if (requirements.length === 1) {
+                            combinedRequirements[req.stat].push({
+                                value: req.value,
+                                condition: 'any'
+                            });
+                        } else {
+                            combinedRequirements[req.stat].push({
+                                value: req.value,
+                                condition: 'while',
+                                talentGroup: `talent_${talent.id}`,
+                                allRequirements: requirements
+                            });
+                        }
+                    });
+                });
+
+                const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
+
+                if (Object.keys(deduplicatedRequirements).length > 0) {
+                    const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+                    if (optimalBuild) {
+                        pendingWeaponOptimalBuild = optimalBuild;
+                        showWeaponConfirmationModal(newWeapon, optimalBuild);
+                    } else {
+                        showNotification('No optimal build found to equip this weapon.', 'warning');
+                        pendingWeaponSelection = null;
+                    }
+                }
+
+                window.pendingSwapWeapon = null;
+            }
+        }
+    });
+
+    document.getElementById('equipBothBtn')?.addEventListener('click', () => {
+        if (window.pendingSwapWeapon) {
+            showNotification('Dual wielding feature coming soon!', 'info');
+            document.getElementById('weaponSwapModal').classList.remove('active');
+            window.pendingSwapWeapon = null;
+        }
+    });
+
+    document.getElementById('cancelWeaponSwapBtn')?.addEventListener('click', () => {
+        window.pendingSwapWeapon = null;
+        document.getElementById('weaponSwapModal').classList.remove('active');
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('weaponSwapModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'weaponSwapModal') {
+            window.pendingSwapWeapon = null;
+            document.getElementById('weaponSwapModal').classList.remove('active');
+        }
+    });
+
+    function unequipWeapon(weaponId) {
+        const weaponIndex = equippedWeapons.findIndex(w => w.id === weaponId);
+        if (weaponIndex === -1) return;
+
+        const weaponName = equippedWeapons[weaponIndex].name;
+        equippedWeapons.splice(weaponIndex, 1);
+
+        // Recalculate build with remaining weapons and talents
+        recalculateBuildForWeaponsAndTalents();
+
         renderAvailableWeapons();
         showNotification(`Unequipped ${weaponName}`, 'success');
+    }
+
+    function recalculateBuildForWeaponsAndTalents() {
+        // If no weapons or talents, clear the build
+        if (equippedWeapons.length === 0 && selectedTalents.size === 0) {
+            document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                const preInput = row.querySelector('.pre-shrine');
+                const postInput = row.querySelector('.post-shrine');
+                preInput.value = 0;
+                postInput.value = 0;
+            });
+            updateSparePoints();
+            return;
+        }
+
+        const combinedRequirements = {};
+
+        // Get requirements from all equipped weapons
+        equippedWeapons.forEach(weapon => {
+            const requirements = getWeaponRequirements(weapon);
+            requirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+                combinedRequirements[req.stat].push({
+                    value: req.value,
+                    condition: 'post'
+                });
+            });
+        });
+
+        // Get requirements from all selected talents
+        const remainingTalents = Array.from(selectedTalents)
+            .map(id => allTalents.find(t => t.id === id))
+            .filter(t => t);
+
+        remainingTalents.forEach(talent => {
+            const requirements = getTalentRequirements(talent);
+            if (requirements.length === 0) return;
+
+            // Check if this is an Oath talent
+            const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+
+            requirements.forEach(req => {
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+
+                // Oath talents always use POST-SHRINE
+                if (isOathTalent) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'post'
+                    });
+                } else if (requirements.length === 1) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'any'
+                    });
+                } else {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'while',
+                        talentGroup: `talent_${talent.id}`,
+                        allRequirements: requirements
+                    });
+                }
+            });
+        });
+
+        // Deduplicate requirements
+        const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
+
+        // Calculate optimal build for remaining weapons and talents
+        if (Object.keys(deduplicatedRequirements).length > 0) {
+            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+            if (optimalBuild) {
+                applyOptimalBuildToStats(optimalBuild);
+                console.log('Build recalculated for remaining weapons and talents');
+            } else {
+                console.warn('Could not find optimal build for remaining weapons and talents');
+            }
+        } else {
+            // No requirements, clear the build
+            document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+                const preInput = row.querySelector('.pre-shrine');
+                const postInput = row.querySelector('.post-shrine');
+                preInput.value = 0;
+                postInput.value = 0;
+            });
+            updateSparePoints();
+        }
     }
 
     function showWeaponConfirmationModal(weapon, optimalBuild) {
@@ -1599,8 +2068,13 @@ document.addEventListener('DOMContentLoaded', () => {
         detailsList.innerHTML = '';
 
         if (requirements.length > 0) {
-            const reqText = requirements.map(r => `${r.stat}: ${r.value}`).join(', ');
-            detailsList.innerHTML = `<div style="padding: 10px; background-color: rgba(255, 255, 255, 0.2);">${reqText}</div>`;
+            // Filter out Power from the display
+            const displayRequirements = requirements.filter(r => !r.isPower);
+
+            if (displayRequirements.length > 0) {
+                const reqText = displayRequirements.map(r => `${r.stat}: ${r.value}`).join(', ');
+                detailsList.innerHTML = `<div style="padding: 10px; background-color: rgba(255, 255, 255, 0.2);">${reqText}</div>`;
+            }
         }
 
         // Get current build stats
@@ -1622,7 +2096,7 @@ document.addEventListener('DOMContentLoaded', () => {
         optimalColumn.className = 'build-column';
         optimalColumn.innerHTML = '<h3>Optimal Stats</h3>';
 
-        // Collect all unique stats
+        // Collect all unique stats (excluding Power)
         const allStats = new Set([
             ...Object.keys(currentBuild.pre),
             ...Object.keys(currentBuild.post),
@@ -1630,32 +2104,29 @@ document.addEventListener('DOMContentLoaded', () => {
             ...Object.keys(optimalBuild.finalStats || {})
         ]);
 
-        console.log(optimalBuild)
+        // Remove Power from the stats to display
+        allStats.delete('Power');
 
         allStats.forEach(stat => {
             const currentPre = currentBuild.pre[stat] || 0;
             const currentPost = currentBuild.post[stat] || 0;
 
             const optimalPre = (optimalBuild.preShrine && optimalBuild.preShrine[stat]) ? optimalBuild.preShrine[stat].currentPre : 0;
-            const postShrineValue = optimalBuild.finalStats[stat] || 0;
+            const postShrineValue = optimalBuild.postShrine[stat] || 0;
             const optimalFinal = optimalBuild.finalStats[stat] || 0;
 
-            // Determine display format
             let optimalPostDisplay;
-            if (optimalPre > 0) {
-                if (postShrineValue > 0) {
-                    optimalPostDisplay = `${Math.floor(postShrineValue)}`;
-                } else {
-                    optimalPostDisplay = `${optimalFinal}`;
-                }
+            if (postShrineValue > 0) {
+                optimalPostDisplay = `${optimalFinal}`;
             } else {
-                // Stat was NOT in shrine - show full investment
                 optimalPostDisplay = `${optimalFinal}`;
             }
 
+            const changed = false;
+
             // Current build stat
             const currentStatDiv = document.createElement('div');
-            currentStatDiv.className = 'build-stat-item';
+            currentStatDiv.className = 'build-stat-item' + (changed ? ' changed' : '');
             currentStatDiv.innerHTML = `
             <span>${stat}:</span>
             <span>${currentPre} | ${currentPost}</span>
@@ -1664,13 +2135,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Optimal build stat
             const optimalStatDiv = document.createElement('div');
-            optimalStatDiv.className = 'build-stat-item';
+            optimalStatDiv.className = 'build-stat-item' + (changed ? ' changed' : '');
             optimalStatDiv.innerHTML = `
             <span>${stat}:</span>
             <span>${optimalPre} | ${optimalPostDisplay}</span>
         `;
-            console.log(stat, optimalPre, optimalPostDisplay, currentBuild)
-
             optimalColumn.appendChild(optimalStatDiv);
         });
 
@@ -1690,7 +2159,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Equip the weapon
-        equippedWeapon = pendingWeaponSelection;
+        equippedWeapons.push(pendingWeaponSelection);
+
+        const weaponName = pendingWeaponSelection.name;
 
         // Clear pending data
         pendingWeaponSelection = null;
@@ -1700,7 +2171,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('weaponConfirmationModal').classList.remove('active');
         renderAvailableWeapons();
 
-        showNotification(`Equipped ${equippedWeapon.name}`, 'success');
+        showNotification(`Equipped ${weaponName}`, 'success');
+    }
+
+    function declineWeaponEquip() {
+        pendingWeaponSelection = null;
+        pendingWeaponOptimalBuild = null;
+        document.getElementById('weaponConfirmationModal').classList.remove('active');
     }
 
     function declineWeaponEquip() {
@@ -1716,10 +2193,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const requirements = getWeaponRequirements(weapon);
 
-        if (weapon.name === "Metal Greatsword") {
-            console.log("Metal Greatsword requirements:", requirements);
-        }
-
         const currentStats = {};
         document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
             const statName = row.getAttribute('data-stat');
@@ -1734,7 +2207,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.add('unavailable');
         }
 
-        const isEquipped = equippedWeapon && equippedWeapon.id === weapon.id;
+        const isEquipped = equippedWeapons.some(w => w.id === weapon.id);
 
         if (isEquipped) {
             card.classList.add('equipped');
@@ -1751,37 +2224,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasBleed = weapon.damageType && weapon.damageType.toLowerCase().includes('bleed');
             const bleedDamage = hasBleed ? scaledDamage * 0.15 : 0;
 
-            // If another weapon is equipped, show comparison
-            let damageDisplay;
-            if (equippedWeapon && !isEquipped) {
-                const equippedScaledDamage = calculateScaledDamage(equippedWeapon, currentStats);
-                const equippedBleedDamage = (equippedWeapon.damageType && equippedWeapon.damageType.toLowerCase().includes('bleed'))
-                    ? equippedScaledDamage * 0.15 : 0;
-
-                const equippedTotal = equippedScaledDamage + equippedBleedDamage;
-                const thisTotal = scaledDamage + bleedDamage;
-
-                const diff = thisTotal - equippedTotal;
-                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-
-                damageDisplay = `
-                <span class="weapon-stat-value">
-                    ${weapon.damage}${hasScaling ? ` <span style="color: var(--card-text-secondary); font-size: 0.85em;">(scales to ${scaledDamage.toFixed(1)})</span>` : ''}
-                    ${hasBleed ? ` <span style="color: #dc143c; font-size: 0.85em;">(+${bleedDamage.toFixed(1)} bleed)</span>` : ''}
-                    <br>
-                    <span style="color: ${diffColor}; font-size: 0.9em; font-weight: bold;">${diffSign}${diff.toFixed(1)} vs equipped</span>
-                </span>
-            `;
-            } else {
-                // No comparison, just show normal display
-                damageDisplay = `
-                <span class="weapon-stat-value">
-                    ${weapon.damage}${hasScaling ? ` <span style="color: var(--card-text-secondary); font-size: 0.85em;">(scales to ${scaledDamage.toFixed(1)})</span>` : ''}
-                    ${hasBleed ? ` <span style="color: #dc143c; font-size: 0.85em;">(+${bleedDamage.toFixed(1)} bleed)</span>` : ''}
-                </span>
-            `;
-            }
+            let damageDisplay = `
+            <span class="weapon-stat-value">
+                ${weapon.damage}${hasScaling ? ` <span style="color: var(--card-text-secondary); font-size: 0.85em;">(scales to ${scaledDamage.toFixed(1)})</span>` : ''}
+                ${hasBleed ? ` <span style="color: #dc143c; font-size: 0.85em;">(+${bleedDamage.toFixed(1)} bleed)</span>` : ''}
+            </span>
+        `;
 
             statsHTML += `
             <div class="weapon-stat-item">
@@ -1801,96 +2249,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (weapon.weight !== undefined) {
-            let weightDisplay;
-            if (equippedWeapon && !isEquipped && equippedWeapon.weight !== undefined) {
-                const diff = weapon.weight - equippedWeapon.weight;
-                const diffColor = diff < 0 ? '#006400' : (diff > 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-                weightDisplay = `${weapon.weight} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(1)})</span>`;
-            } else {
-                weightDisplay = weapon.weight;
-            }
-
             statsHTML += `
             <div class="weapon-stat-item">
                 <span class="weapon-stat-label">Weight:</span>
-                <span class="weapon-stat-value">${weightDisplay}</span>
+                <span class="weapon-stat-value">${weapon.weight}</span>
             </div>
         `;
         }
 
         if (weapon.range !== undefined) {
-            let rangeDisplay;
-            if (equippedWeapon && !isEquipped && equippedWeapon.range !== undefined) {
-                const diff = weapon.range - equippedWeapon.range;
-                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-                rangeDisplay = `${weapon.range} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(1)})</span>`;
-            } else {
-                rangeDisplay = weapon.range;
-            }
-
             statsHTML += `
             <div class="weapon-stat-item">
                 <span class="weapon-stat-label">Range:</span>
-                <span class="weapon-stat-value">${rangeDisplay}</span>
+                <span class="weapon-stat-value">${weapon.range}</span>
             </div>
         `;
         }
 
         if (weapon.speed !== undefined) {
-            let speedDisplay;
-            if (equippedWeapon && !isEquipped && equippedWeapon.speed !== undefined) {
-                const diff = weapon.speed - equippedWeapon.speed;
-                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-                speedDisplay = `${weapon.speed} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
-            } else {
-                speedDisplay = weapon.speed;
-            }
-
             statsHTML += `
             <div class="weapon-stat-item">
                 <span class="weapon-stat-label">Speed:</span>
-                <span class="weapon-stat-value">${speedDisplay}</span>
+                <span class="weapon-stat-value">${weapon.speed}</span>
             </div>
         `;
         }
 
         if (weapon.pen !== undefined && weapon.pen > 0) {
-            let penDisplay;
-            if (equippedWeapon && !isEquipped && equippedWeapon.pen !== undefined) {
-                const diff = weapon.pen - equippedWeapon.pen;
-                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-                penDisplay = `${weapon.pen} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
-            } else {
-                penDisplay = weapon.pen;
-            }
-
             statsHTML += `
             <div class="weapon-stat-item">
                 <span class="weapon-stat-label">Penetration:</span>
-                <span class="weapon-stat-value">${penDisplay}</span>
+                <span class="weapon-stat-value">${weapon.pen}</span>
             </div>
         `;
         }
 
         if (weapon.chip !== undefined && weapon.chip > 0) {
-            let chipDisplay;
-            if (equippedWeapon && !isEquipped && equippedWeapon.chip !== undefined) {
-                const diff = weapon.chip - equippedWeapon.chip;
-                const diffColor = diff > 0 ? '#006400' : (diff < 0 ? '#dc143c' : 'var(--card-text-secondary)');
-                const diffSign = diff > 0 ? '+' : '';
-                chipDisplay = `${weapon.chip} <span style="color: ${diffColor}; font-size: 0.85em;">(${diffSign}${diff.toFixed(2)})</span>`;
-            } else {
-                chipDisplay = weapon.chip;
-            }
-
             statsHTML += `
             <div class="weapon-stat-item">
                 <span class="weapon-stat-label">Chip:</span>
-                <span class="weapon-stat-value">${chipDisplay}</span>
+                <span class="weapon-stat-value">${weapon.chip}</span>
             </div>
         `;
         }
@@ -1914,26 +2312,29 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build scaling section
         let scalingHTML = '';
         if (weapon.scaling && Object.keys(weapon.scaling).length > 0) {
-            // Filter out scaling values that are 0
             const validScaling = Object.entries(weapon.scaling).filter(([stat, value]) => value > 0);
 
             if (validScaling.length > 0) {
                 scalingHTML = `
-            <div style="border-top: 1px solid var(--splitter-color); margin-top: 8px; padding-top: 8px;">
-                <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-bottom: 6px; font-weight: 600;">Scaling:</div>
-                <div class="weapon-scaling">
-        `;
+                <div style="border-top: 1px solid var(--splitter-color); margin-top: 8px; padding-top: 8px;">
+                    <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-bottom: 6px; font-weight: 600;">Scaling:</div>
+                    <div class="weapon-scaling">
+            `;
                 validScaling.forEach(([stat, value]) => {
                     scalingHTML += `<span class="scaling-badge">${stat}: ${value}</span>`;
                 });
                 scalingHTML += `
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
             }
         }
 
-        const equippedHTML = isEquipped ? '<div class="weapon-equipped-badge">EQUIPPED</div>' : '';
+        const equippedHTML = isEquipped ? `
+        <div class="weapon-equipped-badge">
+            <span>EQUIPPED</span>
+        </div>
+    ` : '';
 
         card.innerHTML = `
         <div class="weapon-header">
@@ -1947,15 +2348,12 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
         card.addEventListener('click', () => {
-            if (isEquipped) {
-                unequipWeapon();
-            } else {
-                equipWeapon(weapon.id);
-            }
+            equipWeapon(weapon.id);
         });
 
         return card;
     }
+
 
     function renderAvailableWeapons() {
         const container = document.getElementById('availableWeapons');
@@ -2441,9 +2839,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const fromParts = talent.reqs.from.split(',').map(part => part.trim());
 
             fromParts.forEach(part => {
-                // Skip "Oath:" prefix and other non-talent identifiers
-                if (part.startsWith('Oath:') ||
-                    part.startsWith('Race:') ||
+                // Handle "Oath:" prefix specially
+                if (part.startsWith('Oath:')) {
+                    // Keep the full "Oath: Name" format for matching
+                    requiredTalents.push(part.trim());
+                    return;
+                }
+
+                // Skip other non-talent identifiers
+                if (part.startsWith('Race:') ||
                     part.startsWith('Origin:') ||
                     part.startsWith('Murmur:') ||
                     part.startsWith('Resonance:')) {
@@ -2489,6 +2893,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update the selectTalent function
     // Update the selectTalent function to handle talent requirements as 'while' conditions
     function selectTalent(talentId) {
+        const talent = allTalents.find(t => t.id === talentId);
+        if (!talent) return;
+
+        // CHECK FOR OATH CONFLICT - Add this section at the very beginning
+        if (isOathTalent(talent) && talent.rarity === 'Oath') {
+            const currentOath = getCurrentOath();
+            if (currentOath && currentOath.id !== talentId) {
+                // User is trying to add a different oath
+                showOathSwapModal(currentOath, talent);
+                return;
+            }
+        }
+
         // Store the pending selection
         pendingTalentSelection = {
             talentId: talentId,
@@ -2549,16 +2966,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const combinedRequirements = {};
 
         // NEW: Add weapon requirements if a weapon is equipped
-        if (equippedWeapon) {
-            const weaponRequirements = getWeaponRequirements(equippedWeapon);
-            weaponRequirements.forEach(req => {
-                if (!combinedRequirements[req.stat]) {
-                    combinedRequirements[req.stat] = [];
-                }
-                // Weapon requirements are always POST-SHRINE
-                combinedRequirements[req.stat].push({
-                    value: req.value,
-                    condition: 'post'
+        if (equippedWeapons && equippedWeapons.length > 0) {
+            equippedWeapons.forEach(equippedWeapon => {
+                const weaponRequirements = getWeaponRequirements(equippedWeapon);
+                weaponRequirements.forEach(req => {
+                    if (!combinedRequirements[req.stat]) {
+                        combinedRequirements[req.stat] = [];
+                    }
+                    // Weapon requirements are always POST-SHRINE
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'post'
+                    });
                 });
             });
         }
@@ -2852,8 +3271,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const requirements = getTalentRequirements(talent);
 
             if (requirements.length > 0) {
-                const reqText = requirements.map(r => `${r.stat}: ${r.value}`).join(', ');
-                li.innerHTML = `<strong>${talent.name}</strong><br><span style="font-size: 0.85em; color: var(--card-text-secondary);">${reqText}</span>`;
+                // Filter out Power from display
+                const displayRequirements = requirements.filter(r => !r.isPower);
+
+                if (displayRequirements.length > 0) {
+                    const reqText = displayRequirements.map(r => `${r.stat}: ${r.value}`).join(', ');
+                    li.innerHTML = `<strong>${talent.name}</strong><br><span style="font-size: 0.85em; color: var(--card-text-secondary);">${reqText}</span>`;
+                } else {
+                    li.innerHTML = `<strong>${talent.name}</strong>`;
+                }
             } else {
                 li.textContent = talent.name;
             }
@@ -2880,7 +3306,7 @@ document.addEventListener('DOMContentLoaded', () => {
             optimalColumn.className = 'build-column';
             optimalColumn.innerHTML = '<h3>Optimal Stats</h3>';
 
-            // Collect all unique stats
+            // Collect all unique stats (excluding Power)
             const allStats = new Set([
                 ...Object.keys(currentBuild.pre),
                 ...Object.keys(currentBuild.post),
@@ -2888,10 +3314,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...Object.keys(optimalBuild.finalStats || {})
             ]);
 
+            // Remove Power from the stats to display
+            allStats.delete('Power');
+
             allStats.forEach(stat => {
                 const currentPre = currentBuild.pre[stat] || 0;
                 const currentPost = currentBuild.post[stat] || 0;
-                const currentMax = Math.max(currentPre, currentPost);
 
                 const optimalPre = (optimalBuild.preShrine && optimalBuild.preShrine[stat]) ? optimalBuild.preShrine[stat].currentPre : 0;
 
@@ -2910,8 +3338,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     optimalPostDisplay = `${optimalFinal}`;
                 }
 
-                const changed = false//(currentPre !== optimalPre || currentPost !== optimalFinal) && (optimalPre > 0 || optimalFinal > 0);
-
+                const changed = false;
 
                 // Current build stat
                 const currentStatDiv = document.createElement('div');
@@ -3108,12 +3535,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const requirements = getTalentRequirements(talent);
             if (requirements.length === 0) return;
 
+            // Check if this is an Oath talent
+            const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+
             requirements.forEach(req => {
                 if (!combinedRequirements[req.stat]) {
                     combinedRequirements[req.stat] = [];
                 }
 
-                if (requirements.length === 1) {
+                // Oath talents always use POST-SHRINE
+                if (isOathTalent) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'post'
+                    });
+                } else if (requirements.length === 1) {
                     combinedRequirements[req.stat].push({
                         value: req.value,
                         condition: 'any'
@@ -3953,7 +4389,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageEl.innerHTML = `
         <p style="margin-bottom: 12px;">Some talents require Body or Mind stats. Please choose which attribute to invest in:</p>
         <div style="background-color: rgba(255, 165, 0, 0.2); border-left: 3px solid #ff8c00; padding: 10px; margin-bottom: 15px;">
-            <span style="color: var(--card-text-primary);">This selection will be overridden if you later add talents with specific STR/FTD/AGI or INT/WIL/CHAR requirements. The optimizer will automatically use the stat with the highest existing value.</span>
+            <span style="color: var(--card-text-primary);">This selection will be overridden if you later add talents or weapons with specific STR/FTD/AGI or INT/WIL/CHAR requirements. The optimizer will automatically use the stat with the highest existing value.</span>
         </div>
     `;
 
@@ -4021,20 +4457,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const optimalBuild = calculateOptimalOrder(window.pendingRequirements);
 
         if (optimalBuild) {
-            pendingOptimalBuild = optimalBuild;
+            // Check if this is for weapon equip or talent selection
+            if (window.pendingWeaponEquip) {
+                // Handle weapon equip flow
+                if (pendingWeaponSelection) {
+                    pendingWeaponOptimalBuild = optimalBuild; // Set weapon-specific variable
+                    showWeaponConfirmationModal(pendingWeaponSelection, optimalBuild);
+                }
+                window.pendingWeaponEquip = false;
+            } else {
+                // Handle talent selection flow
+                pendingOptimalBuild = optimalBuild; // Set talent-specific variable
 
-            // Check if we have pending talent selection
-            if (pendingTalentSelection) {
-                const hasNewRequirements = pendingTalentSelection.dependencyIds
-                    .map(id => allTalents.find(t => t.id === id))
-                    .filter(t => t)
-                    .some(talent => getTalentRequirements(talent).length > 0);
+                if (pendingTalentSelection) {
+                    const hasNewRequirements = pendingTalentSelection.dependencyIds
+                        .map(id => allTalents.find(t => t.id === id))
+                        .filter(t => t)
+                        .some(talent => getTalentRequirements(talent).length > 0);
 
-                showTalentConfirmationModal(
-                    pendingTalentSelection.dependencyIds,
-                    optimalBuild,
-                    hasNewRequirements
-                );
+                    showTalentConfirmationModal(
+                        pendingTalentSelection.dependencyIds,
+                        optimalBuild,
+                        hasNewRequirements
+                    );
+                }
             }
         } else {
             showNotification('No optimal build found with selected stats. Please try different choices.', 'warning');
@@ -4068,6 +4514,46 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.id === 'weaponConfirmationModal') {
             declineWeaponEquip();
         }
+    });
+
+
+    document.getElementById('swapOathBtn')?.addEventListener('click', () => {
+        if (!window.pendingOathSwap) return;
+
+        const { current, new: newOath } = window.pendingOathSwap;
+
+        // Get all talents that depend on the current oath
+        const dependentTalents = getTalentsDependingOnOath(current);
+
+        // Remove current oath and all dependent talents
+        selectedTalents.delete(current.id);
+        dependentTalents.forEach(t => selectedTalents.delete(t.id));
+
+        // Close modal
+        document.getElementById('oathSwapModal').classList.remove('active');
+        window.pendingOathSwap = null;
+
+        // Now proceed with adding the new oath
+        selectTalent(newOath.id);
+    });
+
+    document.getElementById('cancelOathSwapBtn')?.addEventListener('click', () => {
+        window.pendingOathSwap = null;
+        document.getElementById('oathSwapModal').classList.remove('active');
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('oathSwapModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'oathSwapModal') {
+            window.pendingOathSwap = null;
+            document.getElementById('oathSwapModal').classList.remove('active');
+        }
+    });
+
+    // Close button handler
+    document.querySelector('#oathSwapModal .close-btn')?.addEventListener('click', () => {
+        window.pendingOathSwap = null;
+        document.getElementById('oathSwapModal').classList.remove('active');
     });
 
     // Initialize weapons tab

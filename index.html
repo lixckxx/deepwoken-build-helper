@@ -830,6 +830,37 @@
         </div>
     </div>
 
+    <div id="weaponSwapModal" class="weapon-swap-modal">
+        <div class="weapon-swap-content">
+            <div class="weapon-swap-header">
+                <h2>Equip Weapon</h2>
+            </div>
+            <div class="weapon-swap-body">
+                <div class="weapon-comparison" id="weaponComparisonCards">
+                    <!-- Weapon card will be inserted here -->
+                </div>
+            </div>
+            <div class="weapon-swap-footer">
+                <button class="weapon-action-btn" id="equipWeaponBtn">Equip Weapon</button>
+                <button class="weapon-action-btn" id="cancelWeaponSwapBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="oathSwapModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>Oath Conflict</h2>
+            <p id="oathSwapMessage"></p>
+            <div id="oathComparisonCards"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;"></div>
+            <div class="modal-actions">
+                <button id="swapOathBtn" class="primary-btn">Swap Oath</button>
+                <button id="cancelOathSwapBtn" class="secondary-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification Container -->
     <div id="notificationContainer" class="notification-container"></div>
 
