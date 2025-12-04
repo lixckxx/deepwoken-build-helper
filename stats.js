@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function isOathTalent(talent) {
-        return talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+        return talent.rarity === 'Oath' && talent.name.startsWith('Oath:');
     }
 
     function getCurrentOath() {
