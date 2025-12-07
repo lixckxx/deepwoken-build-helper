@@ -50,6 +50,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 300);
     }
 
+
+    function normalizeTalentName(name) {
+        return name.replace(/\s*\[(HVY|MED|LGT|HEAVY|MEDIUM|LIGHT|CHA|INT|WIL|STR|FTD|AGI|FLM|ICE|LTN|WND|SDW|MTL|BLD)\]\s*$/i, '').trim();
+    }
+
     // Tab Navigation
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -89,6 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const maxValue = Math.max(preValue, postValue);
             firstInput.value = maxValue;
         }
+    }
+
+    function handleInputValidation(input) {
+        let value = parseInt(input.value) || 0;
+        value = Math.max(0, Math.min(100, value));
+        input.value = value;
     }
 
     // Setup input validation for simple inputs
@@ -230,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Apply the free point rule: first attunement costs 1 point, others get first point free
         // So we add 1 for having any attunements, then subtract 1 for each attunement
         if (attunementCount > 0) {
-            totalPoints = totalPoints + 1 - attunementCount;
+            totalPoints = totalPoints - (attunementCount - 1);
         }
 
         return totalPoints;
@@ -616,6 +627,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateOptimalOrder(desiredStats) {
+
+        console.log('=== DEBUG: Input to calculateOptimalOrder ===');
+        for (const [statName, requirements] of Object.entries(desiredStats)) {
+            if (requirements.length > 0) {
+                console.log(`${statName}:`, requirements);
+            }
+        }
+        console.log('===========================================');
+
         const attunementStats = ['Flamecharm', 'Frostdraw', 'Thundercall', 'Galebreathe', 'Shadowcast', 'Ironsing', 'Bloodrend'];
 
         const derivedStatMapping = {
@@ -718,14 +738,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Original handling for non-derived stats
-            statRequirements[statName] = {
-                isAttunement: attunementStats.includes(statName),
-                requirements: requirements,
-                minPre: 0,
-                minPost: 0,
-                hasAny: false,
-                whileConditions: []
-            };
+            if (!statRequirements[statName]) {
+                statRequirements[statName] = {
+                    isAttunement: attunementStats.includes(statName),
+                    requirements: [],
+                    minPre: 0,
+                    minPost: 0,
+                    hasAny: false,
+                    whileConditions: []
+                };
+            }
+
+            // Add these requirements to existing ones
+            statRequirements[statName].requirements.push(...requirements);
 
             for (const req of requirements) {
                 if (req.condition === 'pre') {
@@ -772,7 +797,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Group while-conditions by talent
                     data.whileConditions.forEach(cond => {
-                        if (cond.talentGroup) {
+                        if (cond.whileStat && cond.whileValue) {
+                            // Create a unique group ID for this while relationship
+                            const groupId = `while_${statName}_${cond.whileStat}`;
+
+                            if (!whileGroups[groupId]) {
+                                whileGroups[groupId] = [];
+                            }
+
+                            whileGroups[groupId].push({
+                                stat: statName,
+                                value: cond.value,
+                                whileStat: cond.whileStat,
+                                whileValue: cond.whileValue
+                            });
+                        } else if (cond.talentGroup) {
                             if (!whileGroups[cond.talentGroup]) {
                                 whileGroups[cond.talentGroup] = [];
                             }
@@ -815,30 +854,186 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (Object.keys(whileGroups).length > 0) {
                     const groupKeys = Object.keys(whileGroups);
-                    const totalWhileCombinations = Math.pow(2, groupKeys.length);
+
+                    // NEW: Check which groups have forced placement due to explicit pre/post requirements
+                    const forcedPlacements = {};
+
+                    groupKeys.forEach(groupKey => {
+                        const group = whileGroups[groupKey];
+                        let forcedPre = false;
+                        let forcedPost = false;
+
+                        // Check all stats involved in this while condition
+                        group.forEach(item => {
+                            // Check the main stat
+                            if (config[item.stat].minPre > 0 && config[item.stat].minPost === 0) {
+                                forcedPre = true;
+                            }
+                            if (config[item.stat].minPost > 0 && config[item.stat].minPre === 0) {
+                                forcedPost = true;
+                            }
+
+                            // NEW: Check the "while" stat (the stat this depends on)
+                            if (item.whileStat) {
+                                if (config[item.whileStat]) {
+                                    if (config[item.whileStat].minPre > 0 && config[item.whileStat].minPost === 0) {
+                                        forcedPre = true;
+                                    }
+                                    if (config[item.whileStat].minPost > 0 && config[item.whileStat].minPre === 0) {
+                                        forcedPost = true;
+                                    }
+                                }
+                            }
+
+                            // Check other stats in allRequirements
+                            if (item.allRequirements) {
+                                item.allRequirements.forEach(req => {
+                                    if (config[req.stat]) {
+                                        if (config[req.stat].minPre > 0 && config[req.stat].minPost === 0) {
+                                            forcedPre = true;
+                                        }
+                                        if (config[req.stat].minPost > 0 && config[req.stat].minPre === 0) {
+                                            forcedPost = true;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+
+                        if (forcedPre && forcedPost) {
+                            console.warn(`Conflict in while group ${groupKey}: some stats require pre, others require post`);
+                        }
+
+                        if (forcedPre) {
+                            forcedPlacements[groupKey] = 'pre';
+                            console.log(`While group ${groupKey} forced to PRE-SHRINE`);
+                        } else if (forcedPost) {
+                            forcedPlacements[groupKey] = 'post';
+                            console.log(`While group ${groupKey} forced to POST-SHRINE`);
+                        }
+                    });
+
+                    // Only generate combinations for groups without forced placement
+                    const flexibleGroups = groupKeys.filter(key => !forcedPlacements[key]);
+                    const totalWhileCombinations = Math.pow(2, flexibleGroups.length);
 
                     for (let j = 0; j < totalWhileCombinations; j++) {
                         const whileConfig = JSON.parse(JSON.stringify(config));
 
-                        groupKeys.forEach((groupKey, index) => {
-                            const isPre = (j >> index) & 1;
+                        // Apply forced placements first
+                        Object.entries(forcedPlacements).forEach(([groupKey, placement]) => {
                             const group = whileGroups[groupKey];
 
-                            if (isPre) {
-                                group.forEach(item => {
+                            group.forEach(item => {
+                                if (placement === 'pre') {
+                                    // For while conditions, use the while value (not the target value)
+                                    // This ensures both stats reach their "while" values together
+                                    const preValue = item.whileStat && item.whileValue
+                                        ? item.whileValue  // Use the while condition value
+                                        : item.value;       // Fallback to full value if no specific while value
+
                                     whileConfig[item.stat].minPre = Math.max(
                                         whileConfig[item.stat].minPre,
-                                        item.value
+                                        preValue
                                     );
-                                });
-                            } else {
-                                group.forEach(item => {
+
+                                    // Also ensure the "while" stat is set to pre
+                                    if (item.whileStat) {
+                                        if (!whileConfig[item.whileStat]) {
+                                            whileConfig[item.whileStat] = {
+                                                isAttunement: false,
+                                                minPre: 0,
+                                                minPost: 0,
+                                                anyRequirements: [],
+                                                whileConditions: []
+                                            };
+                                        }
+                                        whileConfig[item.whileStat].minPre = Math.max(
+                                            whileConfig[item.whileStat].minPre,
+                                            item.whileValue || 0
+                                        );
+                                    }
+                                } else {
                                     whileConfig[item.stat].minPost = Math.max(
                                         whileConfig[item.stat].minPost,
                                         item.value
                                     );
-                                });
-                            }
+
+                                    // Also ensure the "while" stat is set to post
+                                    if (item.whileStat) {
+                                        if (!whileConfig[item.whileStat]) {
+                                            whileConfig[item.whileStat] = {
+                                                isAttunement: false,
+                                                minPre: 0,
+                                                minPost: 0,
+                                                anyRequirements: [],
+                                                whileConditions: []
+                                            };
+                                        }
+                                        whileConfig[item.whileStat].minPost = Math.max(
+                                            whileConfig[item.whileStat].minPost,
+                                            item.whileValue || 0
+                                        );
+                                    }
+                                }
+                            });
+                        });
+
+                        // Then apply flexible placements
+                        flexibleGroups.forEach((groupKey, index) => {
+                            const isPre = (j >> index) & 1;
+                            const group = whileGroups[groupKey];
+
+                            group.forEach(item => {
+                                if (isPre) {
+                                    // For while conditions, use the while value (not the target value)
+                                    const preValue = item.whileStat && item.whileValue
+                                        ? item.whileValue
+                                        : item.value;
+
+                                    whileConfig[item.stat].minPre = Math.max(
+                                        whileConfig[item.stat].minPre,
+                                        preValue
+                                    );
+
+                                    if (item.whileStat) {
+                                        if (!whileConfig[item.whileStat]) {
+                                            whileConfig[item.whileStat] = {
+                                                isAttunement: false,
+                                                minPre: 0,
+                                                minPost: 0,
+                                                anyRequirements: [],
+                                                whileConditions: []
+                                            };
+                                        }
+                                        whileConfig[item.whileStat].minPre = Math.max(
+                                            whileConfig[item.whileStat].minPre,
+                                            item.whileValue || 0
+                                        );
+                                    }
+                                } else {
+                                    whileConfig[item.stat].minPost = Math.max(
+                                        whileConfig[item.stat].minPost,
+                                        item.value
+                                    );
+
+                                    if (item.whileStat) {
+                                        if (!whileConfig[item.whileStat]) {
+                                            whileConfig[item.whileStat] = {
+                                                isAttunement: false,
+                                                minPre: 0,
+                                                minPost: 0,
+                                                anyRequirements: [],
+                                                whileConditions: []
+                                            };
+                                        }
+                                        whileConfig[item.whileStat].minPost = Math.max(
+                                            whileConfig[item.whileStat].minPost,
+                                            item.whileValue || 0
+                                        );
+                                    }
+                                }
+                            });
                         });
 
                         whileVariants.push(whileConfig);
@@ -1036,8 +1231,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // IMPROVED SCORING: Heavily favor solutions with more leftover points
             const leftoverPoints = MAX_TOTAL_POINTS - totalPoints;
-            const shrineEfficiency = statsToInclude.size > 1 ? (statsToInclude.size * 100) : 0;
-            const score = (leftoverPoints * 1000) + shrineEfficiency;
+            const score = (leftoverPoints * 1000) - statsToInclude.size;
+            // --- FIX END ---
 
             if (score > bestScore) {
                 bestScore = score;
@@ -1378,6 +1573,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingWeaponSelection = null;
     let pendingWeaponOptimalBuild = null;
 
+    let allOaths = [];
+
+    let analysisFilters = new Set();
+    let analysisData = null;
+
+
     // Fetch talents data
     async function loadTalents() {
         try {
@@ -1428,6 +1629,457 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('availableWeapons').innerHTML =
                 '<p class="empty-message">Error loading weapons. Please check console.</p>';
         }
+    }
+
+    async function loadTalentCategories() {
+        try {
+            const response = await fetch('./proxy.json');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+
+            if (data.categories) {
+                talentCategories = data.categories;
+                console.log(`Loaded ${Object.keys(talentCategories).length} talent categories`);
+            } else {
+                console.warn('No categories found in data');
+            }
+        } catch (error) {
+            console.error('Error loading talent categories:', error);
+            talentCategories = {}; // Set empty object as fallback
+        }
+    }
+
+    // Find which category a talent belongs to
+    function findTalentCategory(talentName) {
+        for (const [categoryId, categoryData] of Object.entries(talentCategories)) {
+            if (categoryData.talents && categoryData.talents.includes(talentName)) {
+                return categoryData.name;
+            }
+        }
+        return 'Uncategorized';
+    }
+
+    function analyzeMissingTalents(builderData) {
+        try {
+            let data;
+
+            // Check if input is a string
+            if (typeof builderData === 'string') {
+                const trimmedInput = builderData.trim();
+
+                // Try to detect format
+                if (trimmedInput.startsWith('{')) {
+                    // Looks like JSON
+                    data = JSON.parse(trimmedInput);
+                } else if (trimmedInput.includes('== TALENTS ==')) {
+                    // Looks like text character sheet
+                    data = parseTextCharacterSheet(trimmedInput);
+                } else {
+                    showNotification('Unrecognized format. Please paste either JSON data or a character sheet.', 'error');
+                    return;
+                }
+            } else {
+                data = builderData;
+            }
+
+            if (!data.talents || !Array.isArray(data.talents)) {
+                showNotification('Invalid data: No talents array found', 'error');
+                return;
+            }
+
+            // Get imported talents (from character sheet or JSON)
+            // NORMALIZE the names by removing weapon type suffixes
+            const importedTalentNames = new Set(
+                data.talents.map(name => normalizeTalentName(name))
+            );
+
+            // Get currently selected talents in the builder
+            // FILTER OUT talents with dontCountTowardsTotal
+            const builderTalentNames = new Set(
+                Array.from(selectedTalents)
+                    .map(id => allTalents.find(t => t.id === id))
+                    .filter(t => t && !t.dontCountTowardsTotal)
+                    .map(t => normalizeTalentName(t.name)) // NORMALIZE here too
+            );
+
+            const extraTalents = [];
+            importedTalentNames.forEach(normalizedName => {
+                if (!builderTalentNames.has(normalizedName)) {
+                    // Find talent by normalized name
+                    const talent = allTalents.find(t => normalizeTalentName(t.name) === normalizedName);
+
+                    if (talent) {
+                        // SKIP if talent has dontCountTowardsTotal
+                        if (talent.dontCountTowardsTotal) {
+                            return;
+                        }
+
+                        extraTalents.push({
+                            name: talent.name, // Use the actual talent name from database
+                            talent: talent,
+                            category: findTalentCategory(talent.name),
+                            countsTowardTotal: true
+                        });
+                    } else {
+                        // Talent not found in database
+                        extraTalents.push({
+                            name: normalizedName, // Use normalized name for display
+                            talent: null,
+                            category: 'Not Found in Database',
+                            countsTowardTotal: true
+                        });
+                    }
+                }
+            });
+
+            const missingTalents = [];
+            builderTalentNames.forEach(normalizedName => {
+                if (!importedTalentNames.has(normalizedName)) {
+                    // Find talent by normalized name
+                    const talent = allTalents.find(t => normalizeTalentName(t.name) === normalizedName);
+
+                    if (talent) {
+                        // Double-check it doesn't have dontCountTowardsTotal
+                        if (talent.dontCountTowardsTotal) {
+                            return;
+                        }
+
+                        missingTalents.push({
+                            name: talent.name, // Use the actual talent name from database
+                            talent: talent,
+                            category: findTalentCategory(talent.name),
+                            countsTowardTotal: true
+                        });
+                    }
+                }
+            });
+
+            // Sort by name
+            missingTalents.sort((a, b) => a.name.localeCompare(b.name));
+            extraTalents.sort((a, b) => a.name.localeCompare(b.name));
+
+            // Store data for filtering
+            analysisData = {
+                importedCount: importedTalentNames.size,
+                builderCount: builderTalentNames.size,
+                missing: missingTalents,
+                extra: extraTalents
+            };
+
+            // Display results
+            displayTalentAnalysis(analysisData);
+
+        } catch (error) {
+            console.error('Error analyzing talents:', error);
+            showNotification(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    function displayTalentAnalysis(analysis) {
+        // Get current build stats
+        const currentStats = getCurrentMaxBuildStats();
+        const preStats = collectManualBuildStats().pre;
+
+        // Helper function to check if talent matches filters
+        const matchesFilters = (item) => {
+            if (!item.talent) return true; // Always show talents not in database
+
+            const requirements = getTalentRequirements(item.talent);
+
+            // Check availability filters
+            if (analysisFilters.has('pre-available')) {
+                const availablePre = requirements.every(req => {
+                    if (req.isPower || req.stat === 'Power') return true;
+                    if (req.stat === 'Body' || req.stat === 'Mind') {
+                        const derivedStats = calculateBodyAndMind(preStats);
+                        return derivedStats[req.stat] >= req.value;
+                    }
+                    return (preStats[req.stat] || 0) >= req.value;
+                });
+                if (!availablePre) return false;
+            }
+
+            if (analysisFilters.has('post-available')) {
+                const availablePost = requirements.every(req => {
+                    if (req.isPower || req.stat === 'Power') return true;
+                    if (req.stat === 'Body' || req.stat === 'Mind') {
+                        const derivedStats = calculateBodyAndMind(currentStats);
+                        return derivedStats[req.stat] >= req.value;
+                    }
+                    return (currentStats[req.stat] || 0) >= req.value;
+                });
+                if (!availablePost) return false;
+            }
+
+            if (analysisFilters.has('unavailable')) {
+                const isAvailable = requirements.every(req => {
+                    if (req.isPower || req.stat === 'Power') return true;
+                    if (req.stat === 'Body' || req.stat === 'Mind') {
+                        const derivedStats = calculateBodyAndMind(currentStats);
+                        return derivedStats[req.stat] >= req.value;
+                    }
+                    return (currentStats[req.stat] || 0) >= req.value;
+                });
+                if (isAvailable) return false;
+            }
+
+            // Check stat filters
+            const statFilters = new Set([...analysisFilters].filter(f =>
+                !['pre-available', 'post-available', 'unavailable'].includes(f)
+            ));
+
+            if (statFilters.size > 0) {
+                const talentStats = new Set(requirements.map(req => req.stat));
+                for (const filter of statFilters) {
+                    if (!talentStats.has(filter)) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        };
+
+        // Filter the talents
+        const filteredMissing = analysis.missing.filter(matchesFilters);
+        const filteredExtra = analysis.extra.filter(matchesFilters);
+
+        // Update summary
+        document.getElementById('builderTalentCount').textContent = analysis.builderCount;
+        document.getElementById('currentTalentCount').textContent = analysis.importedCount;
+        document.getElementById('missingTalentCount').textContent = filteredMissing.length;
+        document.getElementById('unneededTalentCount').textContent = filteredExtra.length;
+
+        // Display missing talents
+        const missingContainer = document.getElementById('missingTalentsList');
+        missingContainer.innerHTML = '';
+
+        if (filteredMissing.length === 0) {
+            missingContainer.innerHTML = '<p style="color: var(--card-text-secondary); font-style: italic; padding: 10px;">No talents match your filters.</p>';
+        } else {
+            const talentList = document.createElement('div');
+            talentList.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 12px;';
+
+            filteredMissing.forEach(item => {
+                const talentDiv = document.createElement('div');
+                talentDiv.style.cssText = 'padding: 8px; background-color: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-color); cursor: pointer; transition: background-color 0.2s;';
+
+                if (item.talent) {
+                    const requirements = getTalentRequirements(item.talent);
+                    const reqText = requirements.length > 0
+                        ? requirements.filter(r => !r.isPower).map(r => `${r.stat}: ${r.value}`).join(', ')
+                        : 'No requirements';
+
+
+                    // Check availability
+                    const availablePre = requirements.every(req => {
+                        if (req.isPower || req.stat === 'Power') return true;
+                        if (req.stat === 'Body' || req.stat === 'Mind') {
+                            const derivedStats = calculateBodyAndMind(preStats);
+                            return derivedStats[req.stat] >= req.value;
+                        }
+                        return (preStats[req.stat] || 0) >= req.value;
+                    });
+
+                    const availablePost = requirements.every(req => {
+                        if (req.isPower || req.stat === 'Power') return true;
+                        if (req.stat === 'Body' || req.stat === 'Mind') {
+                            const derivedStats = calculateBodyAndMind(currentStats);
+                            return derivedStats[req.stat] >= req.value;
+                        }
+                        return (currentStats[req.stat] || 0) >= req.value;
+                    });
+
+                    let availabilityLabel = '';
+                    if (availablePre) {
+                        availabilityLabel = '<span style="color: #00ff00; font-size: 0.85em;">[Pre-Available]</span>';
+                    } else if (availablePost) {
+                        availabilityLabel = '<span style="color: #90ee90; font-size: 0.85em;">[Post-Available]</span>';
+                    } else {
+                        availabilityLabel = '<span style="color: #dc143c; font-size: 0.85em;">[Unavailable]</span>';
+                    }
+
+                    talentDiv.innerHTML = `
+                    <div style="font-weight: bold; color: var(--card-text-primary);">${item.name} <span style="color: var(--card-text-secondary); font-weight: normal;">(${item.category})</span></div>
+                    <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-top: 4px;">${reqText}</div>
+                `;
+
+                    talentDiv.addEventListener('mouseenter', () => {
+                        talentDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                    });
+                    talentDiv.addEventListener('mouseleave', () => {
+                        talentDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                    });
+                    talentDiv.addEventListener('click', () => {
+                        document.getElementById('missingTalentsModal').classList.remove('active');
+                        selectTalent(item.talent.id);
+                    });
+                } else {
+                    talentDiv.innerHTML = `
+                    <div style="font-weight: bold; color: #dc143c;">${item.name} <span style="color: var(--card-text-secondary); font-weight: normal;">(${item.category})</span></div>
+                    <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-top: 4px;">Not found in database</div>
+                `;
+                    talentDiv.style.cursor = 'default';
+                }
+
+                talentList.appendChild(talentDiv);
+            });
+
+            missingContainer.appendChild(talentList);
+        }
+
+        // Display extra talents (similar structure)
+        const extraContainer = document.getElementById('unneededTalentsList');
+        extraContainer.innerHTML = '';
+
+        if (filteredExtra.length === 0) {
+            extraContainer.innerHTML = '<p style="color: var(--card-text-secondary); font-style: italic; padding: 10px;">No talents match your filters.</p>';
+        } else {
+            const talentList = document.createElement('div');
+            talentList.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 12px;';
+
+            filteredExtra.forEach(item => {
+                const talentDiv = document.createElement('div');
+                talentDiv.style.cssText = 'padding: 8px; background-color: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-color); cursor: pointer; transition: background-color 0.2s;';
+
+                // ADD NULL CHECK HERE
+                if (!item.talent) {
+                    talentDiv.innerHTML = `
+            <div style="font-weight: bold; color: #dc143c;">${item.name} <span style="color: var(--card-text-secondary); font-weight: normal;">(${item.category})</span></div>
+            <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-top: 4px;">Not found in database</div>
+        `;
+                    talentDiv.style.cursor = 'default';
+                    talentList.appendChild(talentDiv);
+                    return; // Skip to next iteration
+                }
+
+                // Now safe to call getTalentRequirements
+                const requirements = getTalentRequirements(item.talent);
+                const reqText = requirements.length > 0
+                    ? requirements.filter(r => !r.isPower).map(r => `${r.stat}: ${r.value}`).join(', ')
+                    : 'No requirements';
+
+                talentDiv.innerHTML = `
+                <div style="font-weight: bold; color: var(--card-text-primary);">${item.name} <span style="color: var(--card-text-secondary); font-weight: normal;">(${item.category})</span></div>
+                <div style="font-size: 0.85em; color: var(--card-text-secondary); margin-top: 4px;">${reqText}</div>
+            `;
+
+                talentDiv.addEventListener('mouseenter', () => {
+                    talentDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                });
+                talentDiv.addEventListener('mouseleave', () => {
+                    talentDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                });
+                talentDiv.addEventListener('click', () => {
+                    document.getElementById('missingTalentsModal').classList.remove('active');
+                    unselectTalent(item.talent.id);
+                });
+
+                talentList.appendChild(talentDiv);
+            });
+
+            extraContainer.appendChild(talentList);
+        }
+
+        // Show results
+        document.getElementById('talentAnalysisResults').style.display = 'block';
+    }
+
+    // Event listeners
+    document.getElementById('analyzeMissingBtn')?.addEventListener('click', () => {
+        document.getElementById('missingTalentsModal').classList.add('active');
+        document.getElementById('talentAnalysisResults').style.display = 'none';
+        document.getElementById('missingTalentsInput').value = '';
+    });
+
+    document.getElementById('analyzeTalentsBtn')?.addEventListener('click', () => {
+        const input = document.getElementById('missingTalentsInput').value.trim();
+        if (!input) {
+            showNotification('Please paste JSON data first', 'warning');
+            return;
+        }
+        analyzeMissingTalents(input);
+    });
+
+    function parseTextCharacterSheet(text) {
+        try {
+            const lines = text.split('\n').map(line => line.trim());
+
+            // Find the TALENTS section
+            const talentsIndex = lines.findIndex(line => line === '== TALENTS ==');
+
+            if (talentsIndex === -1) {
+                throw new Error('Could not find "== TALENTS ==" section');
+            }
+
+            // Extract all talents after the TALENTS header
+            const talents = [];
+            for (let i = talentsIndex + 1; i < lines.length; i++) {
+                const line = lines[i];
+
+                // Stop if we hit another section marker or empty section
+                if (line.startsWith('==') || line === '=====' || line === '') {
+                    continue;
+                }
+
+                // Add non-empty talent names
+                if (line.length > 0) {
+                    talents.push(line);
+                }
+            }
+
+            return { talents };
+        } catch (error) {
+            throw new Error(`Failed to parse character sheet: ${error.message}`);
+        }
+    }
+
+    // Load categories when talents are loaded
+    // Modify the loadTalents function:
+    async function loadTalents() {
+        try {
+            const response = await fetch('./proxy.json');
+            const data = await response.json();
+
+            const talentsData = data.talents || {};
+
+            const hiddenTalents = ['thank you'];
+
+            allTalents = Object.entries(talentsData)
+                .filter(([key, talent]) => talent && talent.name && !hiddenTalents.includes(key.toLowerCase()))
+                .map(([key, talent]) => ({
+                    id: key,
+                    ...talent
+                }));
+
+            console.log(`Loaded ${allTalents.length} talents`);
+            renderAvailableTalents();
+
+
+
+            // Load categories
+            loadTalentCategories();
+        } catch (error) {
+            console.error('Error loading talents:', error);
+            document.getElementById('availableTalents').innerHTML =
+                '<p class="empty-message">Error loading talents. Please check console.</p>';
+        }
+    }
+
+    function loadOaths() {
+        // Filter talents to get only Oath talents
+        allOaths = allTalents.filter(talent =>
+            talent.rarity === 'Oath' && talent.name.startsWith('Oath:')
+        );
+
+        console.log(`Loaded ${allOaths.length} oaths`);
+        renderAvailableOaths();
+    }
+
+    function getOathRequirements(oath) {
+        return getTalentRequirements(oath);
     }
 
     function getWeaponRequirements(weapon) {
@@ -1497,6 +2149,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (requirements.length === 0) return true;
 
         for (const req of requirements) {
+            // Skip Power requirements - they're automatically satisfied by total build
+            if (req.isPower || req.stat === 'Power') {
+                continue;
+            }
+
             const currentValue = currentStats[req.stat] || 0;
             if (currentValue < req.value) {
                 return false;
@@ -1663,9 +2320,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Add new weapon requirements (all as POST-SHRINE)
         weaponRequirements.forEach(req => {
+            // FILTER OUT POWER REQUIREMENTS
+            if (req.isPower || req.stat === 'Power') return;
+
             if (!combinedRequirements[req.stat]) {
                 combinedRequirements[req.stat] = [];
             }
+            // Weapon requirements are always POST-SHRINE
             combinedRequirements[req.stat].push({
                 value: req.value,
                 condition: 'post'
@@ -1674,9 +2335,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Add equipped weapon requirements (all as POST-SHRINE)
         allEquippedWeaponRequirements.forEach(req => {
+            // FILTER OUT POWER REQUIREMENTS
+            if (req.isPower || req.stat === 'Power') return;
+
             if (!combinedRequirements[req.stat]) {
                 combinedRequirements[req.stat] = [];
             }
+            // Weapon requirements are always POST-SHRINE
             combinedRequirements[req.stat].push({
                 value: req.value,
                 condition: 'post'
@@ -1688,12 +2353,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const requirements = getTalentRequirements(talent);
             if (requirements.length === 0) return;
 
+            // Check if this is an Oath talent
+            const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
+
             requirements.forEach(req => {
+                // FILTER OUT POWER REQUIREMENTS
+                if (req.isPower || req.stat === 'Power') return;
+
                 if (!combinedRequirements[req.stat]) {
                     combinedRequirements[req.stat] = [];
                 }
 
-                if (requirements.length === 1) {
+                // Oath talents always use POST-SHRINE
+                if (isOathTalent) {
+                    combinedRequirements[req.stat].push({
+                        value: req.value,
+                        condition: 'post'
+                    });
+                } else if (requirements.length === 1) {
                     combinedRequirements[req.stat].push({
                         value: req.value,
                         condition: 'any'
@@ -1709,8 +2386,36 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        document.querySelectorAll('#optimizer-tab .stat-row[data-stat]').forEach(optimizerRow => {
+            const statName = optimizerRow.getAttribute('data-stat');
 
+            optimizerRow.querySelectorAll('.input-group').forEach(inputGroup => {
+                const input = inputGroup.querySelector('input[type="number"]');
+                const value = parseInt(input.value) || 0;
+                const condition = input.getAttribute('data-condition') || 'any';
 
+                if (value > 0) {
+                    if (!combinedRequirements[statName]) {
+                        combinedRequirements[statName] = [];
+                    }
+
+                    const requirement = { value: value, condition: condition };
+
+                    // If condition is "while", add the while stat and value
+                    if (condition === 'while') {
+                        const whileControls = inputGroup.querySelector('.while-controls');
+                        if (whileControls) {
+                            const whileStat = whileControls.querySelector('.while-stat-select').value;
+                            const whileValue = parseInt(whileControls.querySelector('.while-value-input').value) || 0;
+                            requirement.whileStat = whileStat;
+                            requirement.whileValue = whileValue;
+                        }
+                    }
+
+                    combinedRequirements[statName].push(requirement);
+                }
+            });
+        });
 
         const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
@@ -1908,6 +2613,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
 
+
+
                 const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
                 if (Object.keys(deduplicatedRequirements).length > 0) {
@@ -1981,6 +2688,9 @@ document.addEventListener('DOMContentLoaded', () => {
         equippedWeapons.forEach(weapon => {
             const requirements = getWeaponRequirements(weapon);
             requirements.forEach(req => {
+                // FILTER OUT POWER REQUIREMENTS
+                if (req.isPower || req.stat === 'Power') return;
+
                 if (!combinedRequirements[req.stat]) {
                     combinedRequirements[req.stat] = [];
                 }
@@ -2004,6 +2714,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
 
             requirements.forEach(req => {
+                // FILTER OUT POWER REQUIREMENTS
+                if (req.isPower || req.stat === 'Power') return;
+
                 if (!combinedRequirements[req.stat]) {
                     combinedRequirements[req.stat] = [];
                 }
@@ -2014,7 +2727,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         value: req.value,
                         condition: 'post'
                     });
-                } else if (requirements.length === 1) {
+                } else if (requirements.filter(r => !r.isPower && r.stat !== 'Power').length === 1) {
+                    // Only count non-Power requirements
                     combinedRequirements[req.stat].push({
                         value: req.value,
                         condition: 'any'
@@ -2024,7 +2738,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         value: req.value,
                         condition: 'while',
                         talentGroup: `talent_${talent.id}`,
-                        allRequirements: requirements
+                        allRequirements: requirements.filter(r => !r.isPower && r.stat !== 'Power')
                     });
                 }
             });
@@ -2033,18 +2747,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Deduplicate requirements
         const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
-        // Calculate optimal build for remaining weapons and talents
-        if (Object.keys(deduplicatedRequirements).length > 0) {
-            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
-
-            if (optimalBuild) {
-                applyOptimalBuildToStats(optimalBuild);
-                console.log('Build recalculated for remaining weapons and talents');
-            } else {
-                console.warn('Could not find optimal build for remaining weapons and talents');
-            }
-        } else {
-            // No requirements, clear the build
+        // CHECK: If no actual requirements exist after filtering, just clear the build
+        if (Object.keys(deduplicatedRequirements).length === 0) {
+            console.log('No stat requirements remaining - clearing build');
             document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
                 const preInput = row.querySelector('.pre-shrine');
                 const postInput = row.querySelector('.post-shrine');
@@ -2052,6 +2757,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 postInput.value = 0;
             });
             updateSparePoints();
+            return;
+        }
+
+        // Calculate optimal build for remaining weapons and talents
+        const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+        if (optimalBuild) {
+            applyOptimalBuildToStats(optimalBuild);
+            console.log('Build recalculated for remaining weapons and talents');
+        } else {
+            console.warn('Could not find optimal build for remaining weapons and talents');
         }
     }
 
@@ -2172,12 +2888,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAvailableWeapons();
 
         showNotification(`Equipped ${weaponName}`, 'success');
-    }
-
-    function declineWeaponEquip() {
-        pendingWeaponSelection = null;
-        pendingWeaponOptimalBuild = null;
-        document.getElementById('weaponConfirmationModal').classList.remove('active');
     }
 
     function declineWeaponEquip() {
@@ -2429,6 +3139,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
+    // Setup filters for analysis modal
+    function setupAnalysisFilters() {
+        const filterButtons = document.querySelectorAll('#analysisAvailabilityFilters .filter-btn, #analysisStatFilters .filter-btn:not(.clear-filters)');
+        const clearButton = document.querySelector('#analysisStatFilters .clear-filters');
+
+        filterButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const filter = button.getAttribute('data-filter');
+
+                if (analysisFilters.has(filter)) {
+                    analysisFilters.delete(filter);
+                    button.classList.remove('active');
+                } else {
+                    analysisFilters.add(filter);
+                    button.classList.add('active');
+                }
+
+                // Re-display with filters if we have data
+                if (analysisData) {
+                    displayTalentAnalysis(analysisData);
+                }
+            });
+        });
+
+        clearButton.addEventListener('click', () => {
+            analysisFilters.clear();
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+
+            // Re-display without filters if we have data
+            if (analysisData) {
+                displayTalentAnalysis(analysisData);
+            }
+        });
+    }
+
+    // Call this in your DOMContentLoaded
+    // Add this line at the end of your DOMContentLoaded function:
+    setupAnalysisFilters();
+
     document.getElementById('clearAllTalents')?.addEventListener('click', () => {
         if (selectedTalents.size === 0) return;
 
@@ -2443,7 +3192,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('confirmClearBtn')?.addEventListener('click', () => {
         selectedTalents.clear();
-        recalculateBuildForRemainingTalents();
+        recalculateBuildForWeaponsAndTalents();
         renderBothPanels();
 
         document.getElementById('clearTalentsModal').classList.remove('active');
@@ -2827,7 +3576,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function findTalentByName(talentName) {
-        return allTalents.find(t => t.name.toLowerCase() === talentName.toLowerCase());
+        const normalizedSearch = normalizeTalentName(talentName);
+        return allTalents.find(t => normalizeTalentName(t.name.toLowerCase()) === normalizedSearch.toLowerCase());
     }
 
 
@@ -2846,11 +3596,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
+                // Handle "Murmur:" prefix specially (ADD THIS)
+                if (part.startsWith('Murmur:')) {
+                    // Keep the full "Murmur: Name" format for matching
+                    requiredTalents.push(part.trim());
+                    return;
+                }
+
                 // Skip other non-talent identifiers
                 if (part.startsWith('Race:') ||
                     part.startsWith('Origin:') ||
-                    part.startsWith('Murmur:') ||
                     part.startsWith('Resonance:')) {
+                    return;
+                }
+
+                // Skip quest/location descriptions (they usually contain words like "Complete", "Slay", "Quest", etc.)
+                if (part.includes('Complete') ||
+                    part.includes('Slay') ||
+                    part.includes('Quest') ||
+                    part.includes('Obtain') ||
+                    part.includes('Find')) {
                     return;
                 }
 
@@ -2861,7 +3626,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return requiredTalents;
     }
-
 
     function selectTalentWithDependencies(talentId, visited = new Set()) {
         // Prevent infinite loops
@@ -2890,8 +3654,6 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedTalents.add(talentId);
     }
 
-    // Update the selectTalent function
-    // Update the selectTalent function to handle talent requirements as 'while' conditions
     function selectTalent(talentId) {
         const talent = allTalents.find(t => t.id === talentId);
         if (!talent) return;
@@ -2928,6 +3690,9 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const talent of newTalents) {
             const requirements = getTalentRequirements(talent);
             for (const req of requirements) {
+                // Skip Power requirements - they're automatically satisfied
+                if (req.isPower || req.stat === 'Power') continue;
+
                 // Handle Body/Mind checking
                 if (req.stat === 'Body' || req.stat === 'Mind') {
                     const derivedStats = calculateBodyAndMind(currentMaxStats);
@@ -2970,6 +3735,9 @@ document.addEventListener('DOMContentLoaded', () => {
             equippedWeapons.forEach(equippedWeapon => {
                 const weaponRequirements = getWeaponRequirements(equippedWeapon);
                 weaponRequirements.forEach(req => {
+                    // FILTER OUT POWER REQUIREMENTS
+                    if (req.isPower || req.stat === 'Power') return;
+
                     if (!combinedRequirements[req.stat]) {
                         combinedRequirements[req.stat] = [];
                     }
@@ -2988,32 +3756,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         allTalentsToConsider.forEach((talent) => {
             const requirements = getTalentRequirements(talent);
-
             if (requirements.length === 0) return;
 
+            const fromOathTalent = isOathTalent(talent);
+
             requirements.forEach(req => {
-                // Separate derived stats (Body/Mind) from explicit stats
-                if (req.stat === 'Body' || req.stat === 'Mind') {
-                    if (!derivedStatRequirements.has(req.stat)) {
-                        derivedStatRequirements.set(req.stat, []);
-                    }
-                    derivedStatRequirements.get(req.stat).push({
+                if (req.isPower || req.stat === 'Power') return;
+
+                if (!combinedRequirements[req.stat]) {
+                    combinedRequirements[req.stat] = [];
+                }
+
+                // NEW: Check if optimizer has a setting for this stat
+                const optimizerRow = document.querySelector(`#optimizer-tab .stat-row[data-stat="${req.stat}"]`);
+                const optimizerInput = optimizerRow?.querySelector('input[type="number"]');
+                const optimizerCondition = optimizerInput?.getAttribute('data-condition');
+                const optimizerValue = parseInt(optimizerInput?.value) || 0;
+
+                // Use optimizer setting if it exists and covers this requirement
+                if (optimizerValue >= req.value && optimizerCondition) {
+                    combinedRequirements[req.stat].push({
                         value: req.value,
-                        talent: talent,
-                        multiReq: requirements.length > 1,
-                        allRequirements: requirements
+                        condition: optimizerCondition
                     });
                 } else {
-                    // Track explicit requirements
-                    const currentMax = explicitStatRequirements.get(req.stat) || 0;
-                    explicitStatRequirements.set(req.stat, Math.max(currentMax, req.value));
-
-                    // Add to combined requirements
-                    if (!combinedRequirements[req.stat]) {
-                        combinedRequirements[req.stat] = [];
-                    }
-
-                    if (requirements.length === 1) {
+                    // Fall back to default logic
+                    if (fromOathTalent) {
+                        combinedRequirements[req.stat].push({
+                            value: req.value,
+                            condition: 'post'
+                        });
+                    } else if (requirements.length === 1) {
                         combinedRequirements[req.stat].push({
                             value: req.value,
                             condition: 'any'
@@ -3026,6 +3799,37 @@ document.addEventListener('DOMContentLoaded', () => {
                             allRequirements: requirements
                         });
                     }
+                }
+            });
+        });
+
+        document.querySelectorAll('#optimizer-tab .stat-row[data-stat]').forEach(optimizerRow => {
+            const statName = optimizerRow.getAttribute('data-stat');
+
+            optimizerRow.querySelectorAll('.input-group').forEach(inputGroup => {
+                const input = inputGroup.querySelector('input[type="number"]');
+                const value = parseInt(input.value) || 0;
+                const condition = input.getAttribute('data-condition') || 'any';
+
+                if (value > 0) {
+                    if (!combinedRequirements[statName]) {
+                        combinedRequirements[statName] = [];
+                    }
+
+                    const requirement = { value: value, condition: condition };
+
+                    // If condition is "while", add the while stat and value
+                    if (condition === 'while') {
+                        const whileControls = inputGroup.querySelector('.while-controls');
+                        if (whileControls) {
+                            const whileStat = whileControls.querySelector('.while-stat-select').value;
+                            const whileValue = parseInt(whileControls.querySelector('.while-value-input').value) || 0;
+                            requirement.whileStat = whileStat;
+                            requirement.whileValue = whileValue;
+                        }
+                    }
+
+                    combinedRequirements[statName].push(requirement);
                 }
             });
         });
@@ -3062,8 +3866,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!combinedRequirements[derivedStat]) {
                         combinedRequirements[derivedStat] = [];
                     }
-
-                    if (req.multiReq) {
+                    if (req.isOath) {
+                        combinedRequirements[derivedStat].push({
+                            value: req.value,
+                            condition: 'post'
+                        });
+                    } else if (req.multiReq) {
                         combinedRequirements[derivedStat].push({
                             value: req.value,
                             condition: 'while',
@@ -3113,7 +3921,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         console.log('\n==============================\n');
 
-        const hasNewRequirements = newTalents.some(talent => getTalentRequirements(talent).length > 0);
+        const hasNewRequirements = newTalents.some(talent => {
+            const reqs = getTalentRequirements(talent);
+            // Only count non-Power requirements
+            return reqs.some(req => !req.isPower && req.stat !== 'Power');
+        });
 
         // Only calculate if there are actual requirements
         if (Object.keys(deduplicatedRequirements).length > 0) {
@@ -3496,17 +4308,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function proceedWithTalentRemoval(talentId) {
+        // Get the talent being removed
+        const removedTalent = allTalents.find(t => t.id === talentId);
+
+        // Check if the removed talent had any non-Power stat requirements
+        const removedRequirements = removedTalent ?
+            getTalentRequirements(removedTalent).filter(req => !req.isPower && req.stat !== 'Power') :
+            [];
+
         // Remove the talent
         selectedTalents.delete(talentId);
 
-        // Recalculate build with remaining talents
-        recalculateBuildForRemainingTalents();
+        // Check if recalculation is needed
+        let needsRecalculation = false;
+
+        if (removedRequirements.length > 0) {
+            // Get remaining talents
+            const remainingTalents = Array.from(selectedTalents)
+                .map(id => allTalents.find(t => t.id === id))
+                .filter(t => t);
+
+            // Check if any stat requirement from removed talent is not covered by remaining talents
+            for (const removedReq of removedRequirements) {
+                let isCovered = false;
+
+                // Check remaining talents
+                for (const talent of remainingTalents) {
+                    const talentReqs = getTalentRequirements(talent);
+                    const matchingReq = talentReqs.find(req => req.stat === removedReq.stat);
+
+                    if (matchingReq && matchingReq.value >= removedReq.value) {
+                        isCovered = true;
+                        break;
+                    }
+                }
+
+                // Also check equipped weapons
+                if (!isCovered && equippedWeapons.length > 0) {
+                    for (const weapon of equippedWeapons) {
+                        const weaponReqs = getWeaponRequirements(weapon);
+                        const matchingReq = weaponReqs.find(req => req.stat === removedReq.stat);
+
+                        if (matchingReq && matchingReq.value >= removedReq.value) {
+                            isCovered = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If this requirement isn't covered by anything else, we need to recalculate
+                if (!isCovered) {
+                    needsRecalculation = true;
+                    break;
+                }
+            }
+        }
+
+        // Only recalculate if necessary
+        if (needsRecalculation) {
+            console.log('Recalculating build - removed talent had unique requirements');
+            recalculateBuildForRemainingTalents();
+        } else {
+            console.log('Skipping recalculation - remaining talents/weapons cover all requirements');
+        }
 
         // Re-render both panels
         renderBothPanels();
 
-        const removedTalent = allTalents.find(t => t.id === talentId);
-        showNotification(`Removed "${removedTalent.name}" from your build`, 'success');
+        if (removedTalent) {
+            showNotification(`Removed "${removedTalent.name}" from your build`, 'success');
+        }
     }
 
 
@@ -3539,6 +4410,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOathTalent = talent.rarity === 'Oath' || (talent.reqs && talent.reqs.from && talent.reqs.from.includes('Oath:'));
 
             requirements.forEach(req => {
+                // FILTER OUT POWER REQUIREMENTS
+                if (req.isPower || req.stat === 'Power') return;
+
                 if (!combinedRequirements[req.stat]) {
                     combinedRequirements[req.stat] = [];
                 }
@@ -3549,7 +4423,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         value: req.value,
                         condition: 'post'
                     });
-                } else if (requirements.length === 1) {
+                } else if (requirements.filter(r => !r.isPower && r.stat !== 'Power').length === 1) {
+                    // Only count non-Power requirements when checking if single requirement
                     combinedRequirements[req.stat].push({
                         value: req.value,
                         condition: 'any'
@@ -3559,7 +4434,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         value: req.value,
                         condition: 'while',
                         talentGroup: `talent_${talent.id}`,
-                        allRequirements: requirements
+                        allRequirements: requirements.filter(r => !r.isPower && r.stat !== 'Power')
                     });
                 }
             });
@@ -3568,19 +4443,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Deduplicate requirements
         const deduplicatedRequirements = deduplicateRequirements(combinedRequirements);
 
-        // Calculate optimal build for remaining talents
-        if (Object.keys(deduplicatedRequirements).length > 0) {
-            const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
-
-            if (optimalBuild) {
-                // Apply the new optimal build
-                applyOptimalBuildToStats(optimalBuild);
-                console.log('Build recalculated for remaining talents');
-            } else {
-                console.warn('Could not find optimal build for remaining talents');
-            }
-        } else {
-            // No requirements, clear the build
+        // CHECK: If no actual requirements exist after filtering, just clear the build
+        if (Object.keys(deduplicatedRequirements).length === 0) {
+            console.log('No stat requirements remaining after filtering Power - clearing build');
             document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
                 const preInput = row.querySelector('.pre-shrine');
                 const postInput = row.querySelector('.post-shrine');
@@ -3588,6 +4453,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 postInput.value = 0;
             });
             updateSparePoints();
+            return;
+        }
+
+        // Calculate optimal build for remaining talents
+        const optimalBuild = calculateOptimalOrder(deduplicatedRequirements);
+
+        if (optimalBuild) {
+            // Apply the new optimal build
+            applyOptimalBuildToStats(optimalBuild);
+            console.log('Build recalculated for remaining talents');
+        } else {
+            console.warn('Could not find optimal build for remaining talents');
         }
     }
 
@@ -4138,7 +5015,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${hasUnlocks ? `
                 <div class="step-unlocks">
                     ${step.unlockedTalents.map(t =>
-                `<div class="unlock-item">+ ${t.name}</div>`
+                `<div class="unlock-item">+ ${t.name} (${findTalentCategory(t.name)})</div>`
             ).join('')}
                 </div>
                 ` : ''}
@@ -4490,6 +5367,317 @@ document.addEventListener('DOMContentLoaded', () => {
         window.pendingRequirements = null;
     }
 
+    // ==========================================
+    // IMPORT FROM DEEPWOKEN BUILDER
+    // ==========================================
+
+    // Open import modal
+    document.getElementById('openImportModalBtn')?.addEventListener('click', () => {
+        document.getElementById('importBuildModal').classList.add('active');
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('importBuildModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'importBuildModal') {
+            document.getElementById('importBuildModal').classList.remove('active');
+        }
+    });
+
+    // Open API link in new tab
+    document.getElementById('openApiBtn')?.addEventListener('click', () => {
+        const input = document.getElementById('buildIdInput');
+        const rawInput = input.value.trim();
+
+        if (!rawInput) {
+            showNotification('Please enter a build ID or URL', 'warning');
+            return;
+        }
+
+        // Extract build ID from input
+        let buildId = rawInput;
+
+        // Check if it's a full URL
+        if (rawInput.includes('deepwoken.co/builder')) {
+            const match = rawInput.match(/[?&]id=([^&]+)/);
+            if (match) {
+                buildId = match[1];
+            } else {
+                showNotification('Could not extract build ID from URL', 'error');
+                return;
+            }
+        }
+
+        // Validate build ID format (basic check)
+        if (!buildId || buildId.length < 5) {
+            showNotification('Invalid build ID format', 'error');
+            return;
+        }
+
+        // Construct the API URL
+        const apiUrl = `https://deepwoken.co/api/proxy?url=${encodeURIComponent(`https://api.deepwoken.co/build?id=${buildId}`)}&options=%7B%7D`;
+
+        // Open in new tab
+        window.open(apiUrl, '_blank');
+
+        showNotification('API page opened! Copy the JSON data and paste it below.', 'info', 6000);
+    });
+
+    // Import from JSON
+    document.getElementById('importFromJsonBtn')?.addEventListener('click', () => {
+        const jsonInput = document.getElementById('buildJsonInput');
+        const jsonText = jsonInput.value.trim();
+
+        if (!jsonText) {
+            showNotification('Please paste the JSON data', 'warning');
+            return;
+        }
+
+        try {
+            // Parse JSON
+            const buildData = JSON.parse(jsonText);
+
+            // Validate that it looks like build data
+            if (!buildData.stats && !buildData.talents) {
+                throw new Error('Invalid build data: missing stats or talents');
+            }
+
+            // Import the build
+            importBuildData(buildData);
+
+            // Close modal and clear inputs
+            document.getElementById('importBuildModal').classList.remove('active');
+            document.getElementById('buildIdInput').value = '';
+            document.getElementById('buildJsonInput').value = '';
+
+            showNotification('Build imported successfully!', 'success');
+
+        } catch (error) {
+            console.error('Error parsing JSON:', error);
+            showNotification('Invalid JSON data. Please make sure you copied the entire page content.', 'error');
+        }
+    });
+
+    // Allow Enter key in build ID input
+    document.getElementById('buildIdInput')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('openApiBtn').click();
+        }
+    });
+
+    function importBuildData(buildData) {
+        console.log('Importing build data:', buildData);
+
+        // Mapping from Deepwoken Builder stat names to our stat names
+        const statMapping = {
+            'Strength': 'Strength',
+            'Fortitude': 'Fortitude',
+            'Agility': 'Agility',
+            'Intelligence': 'Intelligence',
+            'Willpower': 'Willpower',
+            'Charisma': 'Charisma',
+            'Heavy Wep.': 'Heavy Wep.',
+            'Medium Wep.': 'Medium Wep.',
+            'Light Wep.': 'Light Wep.',
+            'Flamecharm': 'Flamecharm',
+            'Frostdraw': 'Frostdraw',
+            'Thundercall': 'Thundercall',
+            'Galebreathe': 'Galebreathe',
+            'Shadowcast': 'Shadowcast',
+            'Ironsing': 'Ironsing',
+            'Bloodrend': 'Bloodrend'
+        };
+
+        // Clear all current stats
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+            preInput.value = 0;
+            postInput.value = 0;
+        });
+
+        // Clear selected talents and equipped weapons
+        selectedTalents.clear();
+        equippedWeapons = [];
+
+        // Import stats from the attributes object structure
+        if (buildData.attributes) {
+            // Import base stats (Strength, Fortitude, etc.)
+            if (buildData.attributes.base) {
+                Object.entries(buildData.attributes.base).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const postInput = statRow.querySelector('.post-shrine');
+                            postInput.value = value;
+                        }
+                    }
+                });
+            }
+
+            // Import weapon stats
+            if (buildData.attributes.weapon) {
+                Object.entries(buildData.attributes.weapon).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const postInput = statRow.querySelector('.post-shrine');
+                            postInput.value = value;
+                        }
+                    }
+                });
+            }
+
+            // Import attunement stats
+            if (buildData.attributes.attunement) {
+                Object.entries(buildData.attributes.attunement).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const postInput = statRow.querySelector('.post-shrine');
+                            postInput.value = value;
+                        }
+                    }
+                });
+            }
+        }
+
+        // Also support preShrine data if available (for the pre-shrine column)
+        if (buildData.preShrine) {
+            // Import base stats
+            if (buildData.preShrine.base) {
+                Object.entries(buildData.preShrine.base).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const preInput = statRow.querySelector('.pre-shrine');
+                            preInput.value = value;
+                        }
+                    }
+                });
+            }
+
+            // Import weapon stats
+            if (buildData.preShrine.weapon) {
+                Object.entries(buildData.preShrine.weapon).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const preInput = statRow.querySelector('.pre-shrine');
+                            preInput.value = value;
+                        }
+                    }
+                });
+            }
+
+            // Import attunement stats
+            if (buildData.preShrine.attunement) {
+                Object.entries(buildData.preShrine.attunement).forEach(([statName, value]) => {
+                    const ourStatName = statMapping[statName];
+                    if (ourStatName && value > 0) {
+                        const statRow = document.querySelector(`#stats-tab .stat-row.simple[data-stat="${ourStatName}"]`);
+                        if (statRow) {
+                            const preInput = statRow.querySelector('.pre-shrine');
+                            preInput.value = value;
+                        }
+                    }
+                });
+            }
+        }
+
+        // Import talents
+        let importedTalentCount = 0;
+        let notFoundTalentCount = 0;
+        const notFoundTalents = [];
+
+        if (buildData.talents && Array.isArray(buildData.talents)) {
+            buildData.talents.forEach(talentName => {
+                // Find talent by name (case-insensitive)
+                const talent = allTalents.find(t =>
+                    t.name.toLowerCase() === talentName.toLowerCase()
+                );
+
+                if (talent) {
+                    selectedTalents.add(talent.id);
+                    importedTalentCount++;
+                } else {
+                    console.warn(`Talent not found: ${talentName}`);
+                    notFoundTalents.push(talentName);
+                    notFoundTalentCount++;
+                }
+            });
+        }
+
+        // Import weapon
+        let importedWeaponCount = 0;
+        let notFoundWeapons = [];
+
+        if (buildData.weapons) {
+            // Handle both string and array formats
+            const weaponNames = Array.isArray(buildData.weapons) ? buildData.weapons : [buildData.weapons];
+
+            weaponNames.forEach(weaponName => {
+                if (!weaponName || weaponName === 'None' || weaponName === '') return;
+
+                // Find weapon by name (case-insensitive)
+                const weapon = allWeapons.find(w =>
+                    w.name.toLowerCase() === weaponName.toLowerCase()
+                );
+
+                if (weapon) {
+                    equippedWeapons.push(weapon);
+                    importedWeaponCount++;
+                    console.log(`Equipped weapon: ${weapon.name}`);
+                } else {
+                    console.warn(`Weapon not found: ${weaponName}`);
+                    notFoundWeapons.push(weaponName);
+                }
+            });
+        }
+
+        // Sync all stats to optimizer
+        document.querySelectorAll('#stats-tab .stat-row.simple').forEach(row => {
+            const statName = row.getAttribute('data-stat');
+            const preInput = row.querySelector('.pre-shrine');
+            const postInput = row.querySelector('.post-shrine');
+            const preValue = parseInt(preInput.value) || 0;
+            const postValue = parseInt(postInput.value) || 0;
+
+            syncToOptimizer(statName, preValue, postValue);
+        });
+
+        // Update spare points
+        updateSparePoints();
+
+        // Re-render talents and weapons
+        renderBothPanels();
+        renderAvailableWeapons();
+
+        console.log(`Imported ${importedTalentCount} talents, ${selectedTalents.size} total selected`);
+        console.log(`Imported ${importedWeaponCount} weapons`);
+
+        // Build notification message
+        let message = `Imported ${importedTalentCount} talents`;
+        if (importedWeaponCount > 0) {
+            message += `, ${importedWeaponCount} weapon(s)`;
+        }
+
+        const totalNotFound = notFoundTalentCount + notFoundWeapons.length;
+        if (totalNotFound > 0) {
+            console.log('Talents not found:', notFoundTalents);
+            console.log('Weapons not found:', notFoundWeapons);
+            showNotification(`${message}, ${totalNotFound} not found in database`, 'warning', 5000);
+        } else {
+            showNotification(`${message} successfully`, 'success');
+        }
+    }
+
+    /////
+
     document.getElementById('searchWeapons')?.addEventListener('input', () => {
         renderAvailableWeapons();
     });
@@ -4554,6 +5742,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#oathSwapModal .close-btn')?.addEventListener('click', () => {
         window.pendingOathSwap = null;
         document.getElementById('oathSwapModal').classList.remove('active');
+    });
+
+
+    window.addEventListener('error', (e) => {
+        console.error('Global error caught:', e.error);
+        showNotification('An unexpected error occurred. Check console for details.', 'error');
     });
 
     // Initialize weapons tab

@@ -16,6 +16,7 @@
         <button class="tab-btn" data-tab="optimizer">Point Optimizer</button>
         <button class="tab-btn" data-tab="talents">Talents</button>
         <button class="tab-btn" data-tab="weapons">Weapon</button>
+        <button class="tab-btn" data-tab="oaths">Oaths</button>
         <button class="tab-btn" data-tab="statorder">Stat Order</button>
         <button class="tab-btn" data-tab="recommendations">Recommendations</button>
     </div>
@@ -162,6 +163,14 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="stats-card import-card">
+                <h3 class="card-title">Import Build</h3>
+                <button id="openImportModalBtn" class="import-build-btn"
+                    style="width: 100%; background-color: var(--button-background); color: var(--button-textcolor); padding: 12px; cursor: pointer; border: 1px solid var(--border-color); border-radius: 0; font-weight: bold; text-transform: uppercase;">
+                    Import from Deepwoken Builder
+                </button>
             </div>
         </div>
 
@@ -505,6 +514,9 @@
                         <input type="text" id="searchAvailable" placeholder="Search talents..." />
                     </div>
 
+                    <button id="analyzeMissingBtn" class="clear-all-btn" style="margin-bottom: 12px;">Compare
+                        Talents</button>
+
                     <!-- Rarity Toggles -->
                     <div class="rarity-toggles">
                         <label class="toggle-label">
@@ -725,6 +737,59 @@
         </div>
     </div>
 
+    <div class="tab-content" id="oaths-tab">
+        <div class="weapons-main-container">
+            <!-- Oaths Panel -->
+            <div class="weapons-panel">
+                <div class="panel-header">
+                    <h3>Available Oaths</h3>
+                    <div class="search-bar">
+                        <input type="text" id="searchOaths" placeholder="Search oaths..." />
+                    </div>
+
+                    <!-- Sort Controls -->
+                    <div class="sort-controls">
+                        <label>Sort by:</label>
+                        <select id="oathSortBy">
+                            <option value="name" selected>Name</option>
+                            <option value="requirements">Total Requirements</option>
+                        </select>
+                        <select id="oathSortOrder">
+                            <option value="asc" selected>Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Buttons -->
+                    <div class="filter-buttons" id="oathFilters">
+                        <button class="filter-btn availability-btn" data-filter="available">Available</button>
+                        <button class="filter-btn availability-btn" data-filter="unavailable">Unavailable</button>
+                        <button class="filter-btn" data-filter="Strength">Strength</button>
+                        <button class="filter-btn" data-filter="Fortitude">Fortitude</button>
+                        <button class="filter-btn" data-filter="Agility">Agility</button>
+                        <button class="filter-btn" data-filter="Intelligence">Intelligence</button>
+                        <button class="filter-btn" data-filter="Willpower">Willpower</button>
+                        <button class="filter-btn" data-filter="Charisma">Charisma</button>
+                        <button class="filter-btn" data-filter="Heavy Wep.">Heavy</button>
+                        <button class="filter-btn" data-filter="Medium Wep.">Medium</button>
+                        <button class="filter-btn" data-filter="Light Wep.">Light</button>
+                        <button class="filter-btn" data-filter="Flamecharm">Flame</button>
+                        <button class="filter-btn" data-filter="Frostdraw">Frostdraw</button>
+                        <button class="filter-btn" data-filter="Thundercall">Thundercall</button>
+                        <button class="filter-btn" data-filter="Galebreathe">Galebreathe</button>
+                        <button class="filter-btn" data-filter="Shadowcast">Shadowcast</button>
+                        <button class="filter-btn" data-filter="Ironsing">Ironsing</button>
+                        <button class="filter-btn" data-filter="Bloodrend">Bloodrend</button>
+                        <button class="filter-btn clear-filters">Clear</button>
+                    </div>
+                </div>
+                <div class="weapons-list" id="availableOaths">
+                    <p class="loading-message">Loading oaths...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Recommendations Tab Content -->
     <div class="tab-content" id="recommendations-tab">
         <div class="recommendations-container">
@@ -857,6 +922,183 @@
             <div class="modal-actions">
                 <button id="swapOathBtn" class="primary-btn">Swap Oath</button>
                 <button id="cancelOathSwapBtn" class="secondary-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Import Build Modal -->
+    <div id="importBuildModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import from Deepwoken Builder</h2>
+                <button class="close-btn"
+                    onclick="document.getElementById('importBuildModal').classList.remove('active')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-instructions">
+                    <h3>Step-by-Step Instructions:</h3>
+                    <ol style="line-height: 1.8; color: var(--card-text-primary); margin: 15px 0;">
+                        <li>Copy your Deepwoken Builder URL or ID (e.g., <code
+                                style="background: rgba(255,255,255,0.2); padding: 2px 6px;">abc123a</code>)</li>
+                        <li>Paste it in the box below and click "Open API Link"</li>
+                        <li>A new tab will open showing JSON data</li>
+                        <li><strong>Select ALL the text</strong> on that page (Ctrl+A or Cmd+A)</li>
+                        <li><strong>Copy it</strong> (Ctrl+C or Cmd+C)</li>
+                        <li>Come back to this tab and <strong>paste it</strong> in the text area below</li>
+                        <li>Click "Import Build"</li>
+                    </ol>
+
+                    <div style="margin: 20px 0;">
+                        <label
+                            style="display: block; margin-bottom: 8px; font-weight: bold; color: var(--card-text-primary);">
+                            1. Enter Build URL or ID:
+                        </label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="buildIdInput"
+                                placeholder="abc123a or https://deepwoken.co/builder?id=abc123a"
+                                style="flex: 1; padding: 10px; border: 1px solid var(--border-color); background-color: var(--input-background); color: var(--card-text-primary); border-radius: 0;">
+                            <button id="openApiBtn" class="primary-btn" style="white-space: nowrap;">Open API
+                                Link</button>
+                        </div>
+                    </div>
+
+                    <div style="margin: 20px 0;">
+                        <label
+                            style="display: block; margin-bottom: 8px; font-weight: bold; color: var(--card-text-primary);">
+                            2. Paste the JSON data here:
+                        </label>
+                        <textarea id="buildJsonInput"
+                            placeholder='Paste the JSON data here (should start with { "stats": ...)'
+                            style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--border-color); background-color: var(--input-background); color: var(--card-text-primary); border-radius: 0; font-family: monospace; font-size: 0.9em; resize: vertical; box-sizing: border-box;"></textarea>
+                    </div>
+
+                    <div
+                        style="background-color: rgba(255, 165, 0, 0.2); border-left: 3px solid #ff8c00; padding: 12px; margin: 15px 0;">
+                        <strong style="color: var(--card-text-primary);">💡 Tip:</strong>
+                        <span style="color: var(--card-text-primary);"> The JSON data should look like: <code
+                                style="background: rgba(255,255,255,0.2); padding: 2px 6px;">{"stats":{"strength":50,...},"talents":[...]}</code></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="importFromJsonBtn" class="primary-btn">Import Build</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="missingTalentsModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>Talent Analysis</h2>
+                <button class="close-btn"
+                    onclick="document.getElementById('missingTalentsModal').classList.remove('active')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px;">
+                    <label
+                        style="display: block; margin-bottom: 8px; font-weight: bold; color: var(--card-text-primary);">
+                        Paste your build data below:
+                    </label>
+                    <div
+                        style="background-color: rgba(70, 130, 180, 0.2); border-left: 3px solid #4682b4; padding: 10px; margin-bottom: 12px;">
+                        <strong>Supported Formats:</strong>
+                        <ul style="margin: 8px 0; padding-left: 20px;">
+                            <li><strong>Deepwoken Builder JSON</strong> - Paste the JSON from the builder API</li>
+                            <li><strong>Character Sheet Text</strong> - Copy your character sheet directly from the
+                                game/discord</li>
+                        </ul>
+                    </div>
+                    <textarea id="missingTalentsInput" placeholder='Paste either format here...'
+                        style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--border-color); background-color: var(--input-background); color: var(--card-text-primary); border-radius: 0; font-family: monospace; font-size: 0.9em; resize: vertical; box-sizing: border-box;"></textarea>
+                    <button id="analyzeTalentsBtn" class="primary-btn" style="margin-top: 10px;">Analyze
+                        Talents</button>
+                </div>
+
+                <!-- Results Container -->
+                <div id="talentAnalysisResults" style="display: none;">
+                    <!-- Filter Section -->
+                    <div
+                        style="margin-bottom: 20px; padding: 12px; background-color: var(--input-background); border: 1px solid var(--border-color);">
+                        <h4 style="margin: 0 0 10px 0; color: var(--card-text-primary);">Filters</h4>
+
+                        <!-- Availability Filters -->
+                        <div style="margin-bottom: 12px;">
+                            <label
+                                style="font-weight: 600; color: var(--card-text-primary); display: block; margin-bottom: 6px;">Availability:</label>
+                            <div class="filter-buttons" id="analysisAvailabilityFilters"
+                                style="gap: 6px; display: flex; flex-wrap: wrap;">
+                                <button class="filter-btn availability-btn" data-filter="pre-available">Pre-Shrine
+                                    Available</button>
+                                <button class="filter-btn availability-btn" data-filter="post-available">Post-Shrine
+                                    Available</button>
+                                <button class="filter-btn availability-btn"
+                                    data-filter="unavailable">Unavailable</button>
+                            </div>
+                        </div>
+
+                        <!-- Stat Filters -->
+                        <div>
+                            <label
+                                style="font-weight: 600; color: var(--card-text-primary); display: block; margin-bottom: 6px;">Requirements:</label>
+                            <div class="filter-buttons" id="analysisStatFilters"
+                                style="gap: 6px; display: flex; flex-wrap: wrap;">
+                                <button class="filter-btn" data-filter="Strength">Strength</button>
+                                <button class="filter-btn" data-filter="Fortitude">Fortitude</button>
+                                <button class="filter-btn" data-filter="Agility">Agility</button>
+                                <button class="filter-btn" data-filter="Intelligence">Intelligence</button>
+                                <button class="filter-btn" data-filter="Willpower">Willpower</button>
+                                <button class="filter-btn" data-filter="Charisma">Charisma</button>
+                                <button class="filter-btn" data-filter="Heavy Wep.">Heavy</button>
+                                <button class="filter-btn" data-filter="Medium Wep.">Medium</button>
+                                <button class="filter-btn" data-filter="Light Wep.">Light</button>
+                                <button class="filter-btn" data-filter="Flamecharm">Flame</button>
+                                <button class="filter-btn" data-filter="Frostdraw">Frost</button>
+                                <button class="filter-btn" data-filter="Thundercall">Thunder</button>
+                                <button class="filter-btn" data-filter="Galebreathe">Gale</button>
+                                <button class="filter-btn" data-filter="Shadowcast">Shadow</button>
+                                <button class="filter-btn" data-filter="Ironsing">Iron</button>
+                                <button class="filter-btn" data-filter="Bloodrend">Blood</button>
+                                <button class="filter-btn clear-filters">Clear All</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Missing Talents Section -->
+                    <div class="results-section" id="missingTalentsSection">
+                        <h3 style="color: #ff8c00;">Missing Talents (In Builder But Not In Imported)</h3>
+                        <div id="missingTalentsList"></div>
+                    </div>
+
+                    <!-- Extra Talents Section -->
+                    <div class="results-section" id="unneededTalentsSection">
+                        <h3 style="color: #4682b4;">Extra Talents (In Imported But Not In Builder)</h3>
+                        <div id="unneededTalentsList"></div>
+                    </div>
+
+                    <!-- Summary -->
+                    <div class="results-section">
+                        <h3>Summary</h3>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <span class="summary-label">Talents in Builder:</span>
+                                <span class="summary-value" id="builderTalentCount">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Talents in Imported:</span>
+                                <span class="summary-value" id="currentTalentCount">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Missing (Need to Add):</span>
+                                <span class="summary-value" id="missingTalentCount" style="color: #ff8c00;">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Extra (Can Remove):</span>
+                                <span class="summary-value" id="unneededTalentCount" style="color: #4682b4;">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
